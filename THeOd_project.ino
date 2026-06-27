@@ -1,6 +1,6 @@
 /*
  * ============================================================================
- * THeOd_project_v3.ino — Orchestratore principale del progetto
+ * THeOd_project.ino — Orchestratore principale del progetto
  *
  * HARDWARE TARGET: Heltec WiFi LoRa 32 V2
  *   • ESP32 classico (Xtensa LX6 dual-core)
@@ -47,7 +47,7 @@
  *   lora_handler.h    → SX1276: init, RSSI, SNR, stub Meshtastic
  *   web_page.h        → HTML/CSS/JS dashboard (zero risorse esterne)
  *   web_routes.h      → Access Point + endpoint HTTP (JSON aggiornato)
- *   THeOd_project_v3.ino → questo file
+ *   THeOd_project.ino → questo file
  *
  * ORDINE INCLUDE (rispetta dipendenze):
  *   config → shared_state → battery → led_control → lora_handler
