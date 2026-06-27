@@ -157,7 +157,8 @@
 // ADC1 non ha NESSUN conflitto con il driver WiFi → no retry complessi
 // ---------------------------------------------------------------------------
 #define BATTERY_ADC_PIN             37    // GPIO37 — ADC1-CH1, V2.1 onboard
-#define BATTERY_VOLTAGE_MULTIPLIER   2.0f // Partitore R1=R2=100k → Vbat = Vadc × 2
+#define BATTERY_VOLTAGE_MULTIPLIER   3.042f // Calibrato su misura reale: multimetro=4.243V, sketch=2.79V
+                                             // Partitore reale stimato R1=100k, R2≈150k (÷3.0, non ÷2.0 da schematico)
 #define BATTERY_ADC_VREF             3.9f // Vref con attenuazione 11dB (ADC_ATTEN_DB_11)
 #define BATTERY_ADC_SAMPLES          16   // Campioni per media (ADC1 stabile, 16 sufficienti)
 #define BATTERY_ADC_SAMPLE_DELAY_MS   2   // ms tra campioni (ADC1 non ha conflitti WiFi)
@@ -166,7 +167,7 @@
 //   raw_min = (3.0V / 2.0 / 3.9V) * 4095 ≈ 1575
 //   raw_max = (4.2V / 2.0 / 3.9V) * 4095 ≈ 2205
 // Soglia conservativa a 1400 per non scartare batterie molto scariche
-#define BATTERY_ADC_MIN_VALID_RAW   1400  // Sotto = lettura spuria (non dovrebbe succedere su ADC1)
+#define BATTERY_ADC_MIN_VALID_RAW    950  // Sotto = lettura spuria. raw per Vbat=3.0V è ~1035, margine a 950
 
 // ---------------------------------------------------------------------------
 // SOGLIE TENSIONE BATTERIA Li-Ion 1S
