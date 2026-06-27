@@ -100,9 +100,10 @@ int          meshNodeCount = 0;
 unsigned long meshLastRx  = 0;
 
 // --- Sistema ---
-bool  oledEnabled = OLED_DEFAULT_ON;
-int   wifiClients = 0;
-char  apIpStr[16] = "";
+bool  oledEnabled    = OLED_DEFAULT_ON;
+bool  batSkipNextRead = false;  // Flag: salta lettura ADC dopo toggle OLED (evita falso [CARICA])
+int   wifiClients    = 0;
+char  apIpStr[16]    = "";
 
 // ============================================================================
 // VARIABILI PRIVATE — non condivise con altri moduli

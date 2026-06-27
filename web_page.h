@@ -39,7 +39,7 @@ const char PAGE_HTML[] = R"rawliteral(
 }
 @media(prefers-color-scheme:dark){
   :root{
-    --bg:#121820; --card:#1c2530; --text:#cdd4db; --muted:#576370;
+    --bg:#121820; --card:#1c2530; --text:#cdd4db; --muted:#8a96a3;
     --border:rgba(255,255,255,.07); --accent:#5a9a9b; --a-soft:rgba(79,138,139,.18);
     --off:#2e3c4a; --sh:0 2px 10px rgba(0,0,0,.35); --lora:#9b7fe8;
   }

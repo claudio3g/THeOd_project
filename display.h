@@ -90,6 +90,11 @@ inline void setOledEnabled(bool enabled) {
     if (!displayOk) return;
     oledEnabled = enabled;
     _oledCommand(enabled ? 0xAF : 0xAE);
+    // Quando il display cambia stato, il consumo corrente varia di ~15mA.
+    // Questo causa un transiente sulla tensione batteria (+0.02~0.05V a spegnimento)
+    // che farebbe scattare falsamente batCharging=true nel ciclo successivo.
+    // Il flag dice a batteryUpdate() di saltare UNA lettura per lasciar stabilizzare.
+    batSkipNextRead = true;
     if (enabled) {
         display.clearDisplay();
         display.display();

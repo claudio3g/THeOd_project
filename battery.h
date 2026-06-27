@@ -236,6 +236,15 @@ inline void initBattery() {
 // batteryUpdate() — aggiornamento periodico (chiamata ogni 30 s dal loop)
 // ---------------------------------------------------------------------------
 inline void batteryUpdate() {
+    // Salta questo ciclo se il display OLED è appena cambiato stato.
+    // Il toggle OLED varia il consumo di ~15mA causando un transiente
+    // sulla tensione (+0.02~0.05V) che produrrebbe un falso batCharging=true.
+    if (batSkipNextRead) {
+        batSkipNextRead = false;
+        Serial.println("BAT: lettura saltata (transiente post-toggle OLED).");
+        return;
+    }
+
     float newV = _readBatteryVoltage();
 
     if (newV < 0.0f) {
