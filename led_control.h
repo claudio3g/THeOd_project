@@ -26,6 +26,11 @@ inline void initLed() {
 }
 
 inline LedPattern getLedPattern() {
+    // Override manuale da web: 1=forza spento, 2=forza acceso
+    if (ledOverride == 1) return LED_OFF;
+    if (ledOverride == 2) return LED_SOLID;
+
+    // Logica automatica (ledOverride == 0)
     if (batLowWarning)                         return LED_DIM;
     if (wifiClients > 0)                       return LED_FADE;
     if (batCharging && batPercent >= 99.0f)    return LED_SOLID;

@@ -48,5 +48,6 @@ extern unsigned long meshLastRx; // Timestamp ultimo pacchetto mesh ricevuto
 // --- Sistema ---
 extern bool  oledEnabled;      // true = display attivo
 extern bool  batSkipNextRead;  // true = salta prossima lettura ADC (transiente post-toggle OLED)
+extern int   ledOverride;      // 0=auto (logica normale), 1=forza spento, 2=forza acceso
 extern int   wifiClients;      // Client connessi all'AP
 extern char  apIpStr[16];      // IP AP in formato "192.168.4.1"

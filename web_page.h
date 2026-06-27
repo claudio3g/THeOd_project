@@ -119,9 +119,27 @@ canvas#g{width:100%;height:130px;display:block}
 .tog-k{position:absolute;width:18px;height:18px;background:#fff;border-radius:50%;
   top:3px;left:3px;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.28)}
 .tog.on .tog-k{transform:translateX(20px)}
-.dot{display:inline-block;width:8px;height:8px;border-radius:50%;
-  background:var(--off);transition:background .3s;flex:none}
-.dot.on{background:var(--accent)}
+/* LED widget animato */
+.led-row{display:flex;align-items:center;gap:12px}
+.led-bulb{width:26px;height:26px;border-radius:50%;background:var(--off);
+  flex:none;transition:background .3s,box-shadow .3s}
+.led-bulb.pat-solid{background:#27ae60;box-shadow:0 0 10px rgba(39,174,96,.55)}
+.led-bulb.pat-fade{background:#27ae60;animation:ledFade 2s linear infinite}
+.led-bulb.pat-pulse{animation:ledPulse 1.4s ease-in-out infinite}
+.led-bulb.pat-dim{background:#2a3a2a}
+.led-bulb.pat-off{background:var(--off);box-shadow:none}
+@keyframes ledFade{0%{background:#27ae60;box-shadow:0 0 8px rgba(39,174,96,.5)}
+  100%{background:#1a2a1a;box-shadow:none}}
+@keyframes ledPulse{0%,100%{background:#1a2a1a;box-shadow:none}
+  50%{background:#27ae60;box-shadow:0 0 10px rgba(39,174,96,.6)}}
+.led-info{flex:1;min-width:0}
+.led-pat-name{font-size:.88rem;font-weight:500}
+.led-pat-desc{font-size:.72rem;color:var(--muted);margin-top:1px}
+.led-ctrl{display:flex;gap:5px;margin-top:9px}
+.led-btn{flex:1;padding:5px 0;border:1.5px solid var(--border);border-radius:8px;
+  background:transparent;color:var(--muted);font-size:.7rem;font-weight:600;
+  cursor:pointer;transition:all .2s;text-transform:uppercase;letter-spacing:.04em}
+.led-btn.active{border-color:var(--accent);background:var(--a-soft);color:var(--accent)}
 footer{text-align:center;margin-top:18px;font-size:.68rem;color:var(--muted);line-height:1.6}
 </style>
 </head>
@@ -208,10 +226,18 @@ footer{text-align:center;margin-top:18px;font-size:.68rem;color:var(--muted);lin
       <div class="tog-k"></div>
     </div>
   </div>
-  <div class="sys-row">
-    <div>
-      <div class="sys-lbl"><span class="dot" id="lDot"></span>&nbsp;LED onboard</div>
-      <div class="sys-sub" id="lStat">--</div>
+  <div class="sys-row" style="flex-direction:column;align-items:stretch;gap:0">
+    <div class="led-row">
+      <div class="led-bulb pat-off" id="ledBulb"></div>
+      <div class="led-info">
+        <div class="led-pat-name" id="ledPatName">--</div>
+        <div class="led-pat-desc" id="ledPatDesc">--</div>
+      </div>
+    </div>
+    <div class="led-ctrl">
+      <button class="led-btn" id="ledBtnAuto" onclick="setLed('auto')">Auto</button>
+      <button class="led-btn" id="ledBtnOff"  onclick="setLed('off')">Spento</button>
+      <button class="led-btn" id="ledBtnOn"   onclick="setLed('on')">Acceso</button>
     </div>
   </div>
   <div class="sys-row">
@@ -320,15 +346,25 @@ async function refreshData() {
   oledOn = d.oled;
   document.getElementById('oTog').classList.toggle('on', d.oled);
 
-  // LED pattern
-  var dot = document.getElementById('lDot');
-  dot.classList.toggle('on', d.ledPat !== 'off');
-  var patLabels = {
-    'off':'Spento','dim':'Dim \u2014 preavviso scarica',
-    'fade':'Fade \u2014 client connessi','full':'Acceso \u2014 carica completa',
-    'puls':'Pulse \u2014 in carica'
+  // LED widget animato
+  var patMap = {
+    'off':  { cls:'pat-off',   name:'LED spento',         desc:'Nessun evento attivo' },
+    'dim':  { cls:'pat-dim',   name:'LED dim',             desc:'\u26a0\ufe0f Batteria bassa' },
+    'fade': { cls:'pat-fade',  name:'LED fade',            desc:'Client Wi-Fi connessi' },
+    'full': { cls:'pat-solid', name:'LED acceso',          desc:'Carica completata \u2713' },
+    'puls': { cls:'pat-pulse', name:'LED pulse',           desc:'In carica\u2026' }
   };
-  document.getElementById('lStat').textContent = patLabels[d.ledPat] || d.ledPat;
+  var pm = patMap[d.ledPat] || { cls:'pat-off', name:d.ledPat, desc:'' };
+  var bulb = document.getElementById('ledBulb');
+  bulb.className = 'led-bulb ' + pm.cls;
+  document.getElementById('ledPatName').textContent = pm.name;
+  document.getElementById('ledPatDesc').textContent = pm.desc;
+
+  // Pulsanti override LED (evidenzia quello attivo)
+  var ov = d.ledOverride; // 0=auto, 1=off, 2=on
+  document.getElementById('ledBtnAuto').classList.toggle('active', ov === 0);
+  document.getElementById('ledBtnOff').classList.toggle('active',  ov === 1);
+  document.getElementById('ledBtnOn').classList.toggle('active',   ov === 2);
 
   // Client
   var n = d.clients;
@@ -511,6 +547,28 @@ async function toggleOled() {
     await fetch('/oled?state='+(next?'on':'off'));
     oledOn = next;
     document.getElementById('oTog').classList.toggle('on', next);
+  } catch(e) {}
+}
+
+// ── Override LED (auto / spento / acceso) ────────────────────────────────────
+async function setLed(state) {
+  try {
+    await fetch('/led?state='+state);
+    // Aggiornamento immediato dei pulsanti senza aspettare il prossimo polling
+    var ov = state === 'auto' ? 0 : state === 'off' ? 1 : 2;
+    document.getElementById('ledBtnAuto').classList.toggle('active', ov === 0);
+    document.getElementById('ledBtnOff').classList.toggle('active',  ov === 1);
+    document.getElementById('ledBtnOn').classList.toggle('active',   ov === 2);
+    // Aggiorna subito il bulb se override esplicito
+    if (state === 'off') {
+      document.getElementById('ledBulb').className = 'led-bulb pat-off';
+      document.getElementById('ledPatName').textContent = 'LED spento';
+      document.getElementById('ledPatDesc').textContent = 'Override manuale';
+    } else if (state === 'on') {
+      document.getElementById('ledBulb').className = 'led-bulb pat-solid';
+      document.getElementById('ledPatName').textContent = 'LED acceso';
+      document.getElementById('ledPatDesc').textContent = 'Override manuale';
+    }
   } catch(e) {}
 }
 

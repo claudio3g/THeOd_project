@@ -1,6 +1,6 @@
 /*
  * ============================================================================
- * THeOd_project.ino — Orchestratore principale del progetto
+ * THeOd_project_v3.ino — Orchestratore principale del progetto
  *
  * HARDWARE TARGET: Heltec WiFi LoRa 32 V2
  *   • ESP32 classico (Xtensa LX6 dual-core)
@@ -47,7 +47,7 @@
  *   lora_handler.h    → SX1276: init, RSSI, SNR, stub Meshtastic
  *   web_page.h        → HTML/CSS/JS dashboard (zero risorse esterne)
  *   web_routes.h      → Access Point + endpoint HTTP (JSON aggiornato)
- *   THeOd_project.ino → questo file
+ *   THeOd_project_v3.ino → questo file
  *
  * ORDINE INCLUDE (rispetta dipendenze):
  *   config → shared_state → battery → led_control → lora_handler
@@ -100,10 +100,11 @@ int          meshNodeCount = 0;
 unsigned long meshLastRx  = 0;
 
 // --- Sistema ---
-bool  oledEnabled    = OLED_DEFAULT_ON;
-bool  batSkipNextRead = false;  // Flag: salta lettura ADC dopo toggle OLED (evita falso [CARICA])
-int   wifiClients    = 0;
-char  apIpStr[16]    = "";
+bool  oledEnabled     = OLED_DEFAULT_ON;
+bool  batSkipNextRead = false;
+int   ledOverride     = 0;     // 0=auto, 1=forza spento, 2=forza acceso
+int   wifiClients     = 0;
+char  apIpStr[16]     = "";
 
 // ============================================================================
 // VARIABILI PRIVATE — non condivise con altri moduli

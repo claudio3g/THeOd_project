@@ -57,6 +57,7 @@ static void _handleRoot() {
 //   loraSnr:   SNR ultimo pacchetto LoRa (dB, 1 decimale)
 //   loraReady: modulo LoRa inizializzato (bool)
 //   loraLabel: qualità segnale ("Buono"/"OK"/"Debole"/"N/D")
+//   ledOverride: 0=auto, 1=spento, 2=acceso
 // ---------------------------------------------------------------------------
 static void _handleData() {
     LedPattern lp = getLedPattern();
@@ -76,7 +77,7 @@ static void _handleData() {
         "\"loraRssi\":%d,\"loraSnr\":%.1f,"
         "\"loraReady\":%s,\"loraLabel\":\"%s\","
         "\"oled\":%s,\"clients\":%d,"
-        "\"ledPat\":\"%s\","
+        "\"ledPat\":\"%s\",\"ledOverride\":%d,"
         "\"ip\":\"%s\""
         "}",
         touchValue,  touchFiltered,
@@ -97,6 +98,7 @@ static void _handleData() {
         oledEnabled    ? "true"  : "false",
         wifiClients,
         _ledPatStr(lp),
+        ledOverride,
         apIpStr
     );
     server.send(200, "application/json", json);
@@ -192,6 +194,24 @@ static void _handleOled() {
     else { server.send(400, "text/plain", "Valore non valido (usa on|off)"); }
 }
 
+// ---------------------------------------------------------------------------
+// GET /led?state=auto|off|on — Override manuale LED onboard
+//   auto → torna alla logica automatica (pattern per stato batteria/WiFi)
+//   off  → forza LED spento
+//   on   → forza LED acceso (solid)
+// ---------------------------------------------------------------------------
+static void _handleLed() {
+    if (!server.hasArg("state")) {
+        server.send(400, "text/plain", "Parametro 'state' mancante");
+        return;
+    }
+    String s = server.arg("state");
+    if      (s == "auto") { ledOverride = 0; server.send(200, "text/plain", "OK"); }
+    else if (s == "off")  { ledOverride = 1; server.send(200, "text/plain", "OK"); }
+    else if (s == "on")   { ledOverride = 2; server.send(200, "text/plain", "OK"); }
+    else { server.send(400, "text/plain", "Valore non valido (usa auto|off|on)"); }
+}
+
 static void _handleNotFound() {
     server.send(404, "text/plain", "404 - Non trovata");
 }
@@ -208,8 +228,9 @@ inline void startWebServer() {
     server.on("/",        _handleRoot);
     server.on("/data",    _handleData);
     server.on("/battery", _handleBattery);
-    server.on("/lora",    _handleLora);    // NUOVO v3
+    server.on("/lora",    _handleLora);
     server.on("/oled",    _handleOled);
+    server.on("/led",     _handleLed);     // Override manuale LED
     server.onNotFound(_handleNotFound);
     server.begin();
 
