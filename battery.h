@@ -21,13 +21,22 @@
  * RILEVAMENTO CARICA:
  *   Doppio criterio:
  *   1. Delta tensione tra letture consecutive > BATTERY_CHARGING_THRESHOLD
- *   2. Vbat > BATTERY_VOLTAGE_CHARGING (4.05V): TP4056 sicuramente attivo
+ *   2. Rilevamento via delta consecutivi (streak): N delta positivi = in carica
  * ============================================================================
  */
 
 static unsigned long _batWarnStart  = 0;
 static float         _lastValidVbat = -1.0f;
-static float         _prevVbat      = -1.0f;  // Per rilevamento delta carica
+static float         _prevVbat      = -1.0f;
+
+// Contatori delta consecutivi per rilevamento carica robusto
+// Incrementati/decrementati ad ogni batteryUpdate(), resettati al cambio segno
+static int _chargingStreak    = 0;  // quante letture consecutive con delta > +threshold
+static int _dischargingStreak = 0;  // quante letture consecutive con delta < -threshold
+
+// Quante letture consecutive dello stesso segno servono per cambiare stato
+// Con BATTERY_READ_INTERVAL_MS=30s: 2 letture = cambio stato in max 60 secondi
+#define CHARGING_STREAK_NEEDED  2
 
 // ---------------------------------------------------------------------------
 // _readBatteryVoltage() — lettura ADC1 (GPIO37), semplice e affidabile
@@ -133,14 +142,46 @@ static void _updateTimeEstimates() {
 }
 
 // ---------------------------------------------------------------------------
-// _detectCharging() — doppio criterio: delta tensione + soglia assoluta
+// _updateChargingState() — rilevamento carica basato su delta consecutivi
+//
+// LOGICA:
+//   Ogni chiamata confronta newV con prevV e aggiorna i contatori streak.
+//   Solo dopo CHARGING_STREAK_NEEDED letture consecutive dello stesso segno
+//   lo stato batCharging cambia. Questo evita falsi toggle da rumore ADC.
+//
+// PERCHÉ NON USI LA SOGLIA ASSOLUTA (es. Vbat > 4.05V):
+//   Una batteria Li-Ion piena resta > 4.05V per molte ore anche scollegata.
+//   Usare la soglia assoluta causa batCharging=true anche senza USB.
+//   Il delta nel tempo è l'unico indicatore affidabile della direzione.
+//
+// PRIMA LETTURA (prevV < 0): non abbiamo storia → batCharging rimane invariato.
+// Si aggiorna correttamente al primo ciclo dopo il boot (30 secondi).
 // ---------------------------------------------------------------------------
-static bool _detectCharging(float newV, float prevV) {
-    // Criterio 1: tensione in aumento rispetto alla lettura precedente
-    if (prevV >= 0.0f && (newV - prevV) > BATTERY_CHARGING_THRESHOLD) return true;
-    // Criterio 2: tensione sopra la soglia di carica TP4056 attivo
-    if (newV >= BATTERY_VOLTAGE_CHARGING) return true;
-    return false;
+static void _updateChargingState(float newV, float prevV) {
+    if (prevV < 0.0f) return;  // Nessuna lettura precedente: aspetta il prossimo ciclo
+
+    float delta = newV - prevV;
+
+    if (delta > BATTERY_CHARGING_THRESHOLD) {
+        // Tensione in salita → possibile carica
+        _chargingStreak++;
+        _dischargingStreak = 0;
+        if (_chargingStreak >= CHARGING_STREAK_NEEDED) {
+            batCharging = true;
+        }
+    } else if (delta < -BATTERY_CHARGING_THRESHOLD) {
+        // Tensione in discesa → possibile scarica
+        _dischargingStreak++;
+        _chargingStreak = 0;
+        if (_dischargingStreak >= CHARGING_STREAK_NEEDED) {
+            batCharging = false;
+        }
+    } else {
+        // Delta trascurabile (tensione stabile): non cambiare stato
+        // Resetta entrambi i contatori: serve una serie pulita per cambiare
+        _chargingStreak    = 0;
+        _dischargingStreak = 0;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -156,18 +197,18 @@ inline void initBattery() {
     batTimeToEmpty = -1;
     batEstimating  = true;
 
-    // Se il sistema riparte da USB dopo scarica critica:
-    // forza stato carica per non rientrare subito in deep sleep
+    // Stato carica: al boot non abbiamo storia → default false.
+    // Si aggiornerà correttamente dopo il primo batteryUpdate() (30 secondi).
+    // Eccezione: se ripartenza da USB dopo scarica critica, forza carica.
+    batCharging    = false;
+    _chargingStreak    = 0;
+    _dischargingStreak = 0;
+
     esp_reset_reason_t reason = esp_reset_reason();
     if ((reason == ESP_RST_POWERON || reason == ESP_RST_EXT) &&
         batVoltage >= 0.0f && batVoltage <= BATTERY_VOLTAGE_CRITICAL) {
-        batCharging    = true;
-        batShouldSleep = false;
+        batCharging = true;
         Serial.println("BAT: boot con Vbat critica — forzo stato carica.");
-    }
-
-    if (!batCharging && batVoltage > 0.0f) {
-        batCharging = _detectCharging(batVoltage, -1.0f);
     }
 
     _prevVbat = batVoltage;
@@ -202,8 +243,8 @@ inline void batteryUpdate() {
         return;
     }
 
-    batCharging = _detectCharging(newV, _prevVbat);
-    _prevVbat   = newV;
+    _updateChargingState(newV, _prevVbat);  // Aggiorna batCharging con logica streak
+    _prevVbat  = newV;
     batVoltage  = newV;
     batPercent  = _voltageToPercent(batVoltage);
 

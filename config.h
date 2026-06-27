@@ -173,7 +173,6 @@
 // SOGLIE TENSIONE BATTERIA Li-Ion 1S
 // ---------------------------------------------------------------------------
 #define BATTERY_VOLTAGE_FULL      4.10f   // V → 100% (carica completa)
-#define BATTERY_VOLTAGE_CHARGING  4.05f   // V → sopra questa soglia = USB connessa e TP4056 in carica
                                            //     (il TP4056/MCP73831 porta la cella a 4.2V costante)
 #define BATTERY_VOLTAGE_LOW       3.50f   // V → avvio preavviso scarica
 #define BATTERY_VOLTAGE_CRITICAL  3.20f   // V → deep sleep immediato
