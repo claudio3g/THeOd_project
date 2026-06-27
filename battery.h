@@ -1,70 +1,78 @@
 #pragma once
 #include <Arduino.h>
-#include "driver/adc.h"    
-#include <esp_sleep.h>     
+#include <esp_sleep.h>
 #include "config.h"
 #include "shared_state.h"
 
 /*
  * ============================================================================
  * battery.h — gestione completa della batteria
+ *
+ * HARDWARE CONFERMATO: Heltec WiFi LoRa 32 V2.1
+ *   Pin ADC:    GPIO37 (ADC1-CH1) — identificato con Heltec_Board_Identifier
+ *   Partitore: R1=R2=100k → divisore = 2.0 (V2 aveva 4.9)
+ *   ADC1 non ha conflitti con WiFi → lettura semplice e affidabile
+ *
+ * LETTURA ADC:
+ *   Attenuazione 11dB (ADC_ATTEN_DB_11), fondo scala ≈ 3.9V
+ *   Con 0dB (Vref=1.1V) l'ADC saturava: Vadc=Vbat/2=1.85V > 1.1V → raw=4095 → Vbat=5.39V
+ *   Con 11dB: raw ≈ 1575–2205 per Li-Ion 3.0V–4.2V → nessuna saturazione
+ *
+ * RILEVAMENTO CARICA:
+ *   Doppio criterio:
+ *   1. Delta tensione tra letture consecutive > BATTERY_CHARGING_THRESHOLD
+ *   2. Vbat > BATTERY_VOLTAGE_CHARGING (4.05V): TP4056 sicuramente attivo
  * ============================================================================
  */
 
-static unsigned long _batWarnStart = 0;
+static unsigned long _batWarnStart  = 0;
+static float         _lastValidVbat = -1.0f;
+static float         _prevVbat      = -1.0f;  // Per rilevamento delta carica
 
 // ---------------------------------------------------------------------------
-// LETTURA ADC — media su BATTERY_ADC_SAMPLES campioni
+// _readBatteryVoltage() — lettura ADC1 (GPIO37), semplice e affidabile
+//
+// ADC1 non ha conflitti con WiFi: nessun retry complesso necessario.
+// Usa analogSetPinAttenuation(ADC_11db) per Vref≈3.9V, evita saturazione.
 // ---------------------------------------------------------------------------
 static float _readBatteryVoltage() {
+    // Configura ADC1 con attenuazione 11dB (fondo scala ≈ 3.9V)
+    // Necessario perché Vadc = Vbat/2 ≈ 1.85V > 1.1V (limite 0dB)
+    analogSetPinAttenuation(BATTERY_ADC_PIN, ADC_11db);
+    delay(5);  // Breve attesa per stabilizzazione pin dopo cambio attenuazione
+
     long sum   = 0;
     int  count = 0;
 
-#ifdef BATTERY_ADC_USE_ADC2
-    // --- Percorso V2: GPIO13, ADC2 ---
-    // Configura attenuazione 0 dB ogni volta.
-    adc2_config_channel_atten(
-        (adc2_channel_t)BATTERY_ADC2_CH_RAW,
-        ADC_ATTEN_DB_0
-    );
+    for (int i = 0; i < BATTERY_ADC_SAMPLES; i++) {
+        int raw = analogRead(BATTERY_ADC_PIN);
 
-    for (int s = 0; s < BATTERY_ADC_SAMPLES; s++) {
-        int  raw = 0;
-        bool ok  = false;
-        for (int t = 0; t < BATTERY_ADC_RETRY_MAX; t++) {
-            esp_err_t r = adc2_get_raw(
-                (adc2_channel_t)BATTERY_ADC2_CH_RAW,
-                ADC_WIDTH_BIT_12,
-                &raw
-            );
-            if (r == ESP_OK) { ok = true; break; }
-            delayMicroseconds(300);  
+        // Scarta raw spuri (non dovrebbero esserci su ADC1, ma per sicurezza)
+        if (raw >= BATTERY_ADC_MIN_VALID_RAW) {
+            sum += raw;
+            count++;
         }
-        if (ok) { sum += raw; count++; }
-        delay(1);  
+        delay(BATTERY_ADC_SAMPLE_DELAY_MS);
     }
-#else
-    // --- Percorso V2.1+: GPIO37, ADC1 ---
-    // CORREZIONE APPLICATA: Inserito il casting esplicito (adc_attenuation_t) per compilazione su core vecchio 0.0.7
-    analogSetPinAttenuation(BATTERY_ADC_PIN, (adc_attenuation_t)ADC_ATTEN_DB_0);
-    for (int s = 0; s < BATTERY_ADC_SAMPLES; s++) {
-        sum += analogRead(BATTERY_ADC_PIN);
-        delay(1);
+
+    if (count == 0) {
+        Serial.println("BAT: nessun campione valido — batteria inserita?");
+        return (_lastValidVbat > 0.0f) ? _lastValidVbat : -1.0f;
     }
-    count = BATTERY_ADC_SAMPLES;
-#endif
 
-    if (count == 0) return -1.0f;  
-
+    // Vbat = (raw_medio / 4095) * Vref_11dB * Moltiplicatore_partitore
     float vadc = ((float)sum / (float)count) * (BATTERY_ADC_VREF / 4095.0f);
-    return vadc * BATTERY_VOLTAGE_MULTIPLIER;
+    float vbat = vadc * BATTERY_VOLTAGE_MULTIPLIER;
+
+    _lastValidVbat = vbat;
+    return vbat;
 }
 
 // ---------------------------------------------------------------------------
-// CONVERSIONE tensione → percentuale
+// _voltageToPercent() — curva lineare tra EMPTY e FULL
 // ---------------------------------------------------------------------------
 static float _voltageToPercent(float v) {
-    if (v < 0.0f) return -1.0f;  
+    if (v < 0.0f) return -1.0f;
     float pct = (v - BATTERY_VOLTAGE_EMPTY) /
                 (BATTERY_VOLTAGE_FULL - BATTERY_VOLTAGE_EMPTY) * 100.0f;
     if (pct < 0.0f)   pct = 0.0f;
@@ -73,9 +81,10 @@ static float _voltageToPercent(float v) {
 }
 
 // ---------------------------------------------------------------------------
-// RING BUFFER — Gestione Storico
+// Ring buffer storico percentuali (per grafico web)
 // ---------------------------------------------------------------------------
 static void _historyPush(float percent) {
+    if (percent < 0.0f) return;  // Non pushare valori invalidi
     batHistory[batHistoryHead] = percent;
     batHistoryHead = (batHistoryHead + 1) % BATTERY_HISTORY_POINTS;
     if (batHistorySize < BATTERY_HISTORY_POINTS) batHistorySize++;
@@ -88,7 +97,7 @@ static float _historyAt(int i) {
 }
 
 // ---------------------------------------------------------------------------
-// STIMA ADATTIVA tempo rimanente
+// _updateTimeEstimates() — stima ETA carica/scarica da trend storico
 // ---------------------------------------------------------------------------
 static void _updateTimeEstimates() {
     if (batHistorySize < BATTERY_TREND_SAMPLES) {
@@ -124,7 +133,18 @@ static void _updateTimeEstimates() {
 }
 
 // ---------------------------------------------------------------------------
-// INIZIALIZZAZIONE — chiamata in setup()
+// _detectCharging() — doppio criterio: delta tensione + soglia assoluta
+// ---------------------------------------------------------------------------
+static bool _detectCharging(float newV, float prevV) {
+    // Criterio 1: tensione in aumento rispetto alla lettura precedente
+    if (prevV >= 0.0f && (newV - prevV) > BATTERY_CHARGING_THRESHOLD) return true;
+    // Criterio 2: tensione sopra la soglia di carica TP4056 attivo
+    if (newV >= BATTERY_VOLTAGE_CHARGING) return true;
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// initBattery() — prima lettura al boot + verifica soglia critica
 // ---------------------------------------------------------------------------
 inline void initBattery() {
     batVoltage     = _readBatteryVoltage();
@@ -136,16 +156,22 @@ inline void initBattery() {
     batTimeToEmpty = -1;
     batEstimating  = true;
 
+    // Se il sistema riparte da USB dopo scarica critica:
+    // forza stato carica per non rientrare subito in deep sleep
     esp_reset_reason_t reason = esp_reset_reason();
-    if (reason == ESP_RST_POWERON || reason == ESP_RST_EXT) {
-        if (batVoltage >= 0.0f && batVoltage <= BATTERY_VOLTAGE_CRITICAL) {
-            batCharging = true;      
-            batShouldSleep = false;
-            Serial.println("USB collegato: forzo stato carica per evitare deep sleep.");
-        }
+    if ((reason == ESP_RST_POWERON || reason == ESP_RST_EXT) &&
+        batVoltage >= 0.0f && batVoltage <= BATTERY_VOLTAGE_CRITICAL) {
+        batCharging    = true;
+        batShouldSleep = false;
+        Serial.println("BAT: boot con Vbat critica — forzo stato carica.");
     }
 
-    if (batPercent >= 0.0f) _historyPush(batPercent);
+    if (!batCharging && batVoltage > 0.0f) {
+        batCharging = _detectCharging(batVoltage, -1.0f);
+    }
+
+    _prevVbat = batVoltage;
+    _historyPush(batPercent);
 
     if (batVoltage > 0.0f && batVoltage <= BATTERY_VOLTAGE_CRITICAL && !batCharging) {
         Serial.println("BAT [CRITICA] al boot — richiesta deep sleep.");
@@ -154,45 +180,44 @@ inline void initBattery() {
     }
 
     if (batVoltage < 0.0f) {
-        Serial.println("BAT: N/D (lettura ADC fallita al boot)");
+        Serial.println("BAT: N/D al boot — batteria inserita?");
     } else {
-        Serial.print("BAT: ");
+        Serial.print("BAT init: ");
         Serial.print(batVoltage, 2);
         Serial.print(" V  ");
         Serial.print((int)batPercent);
-        Serial.println("%");
+        Serial.print("%  ");
+        Serial.println(batCharging ? "[CARICA]" : "[SCARICA]");
     }
 }
 
 // ---------------------------------------------------------------------------
-// AGGIORNAMENTO PERIODICO — chiamata in loop()
+// batteryUpdate() — aggiornamento periodico (chiamata ogni 30 s dal loop)
 // ---------------------------------------------------------------------------
 inline void batteryUpdate() {
     float newV = _readBatteryVoltage();
 
     if (newV < 0.0f) {
-        Serial.println("BAT: lettura ADC fallita — valore precedente mantenuto.");
+        Serial.println("BAT: lettura fallita — valore precedente mantenuto.");
         return;
     }
 
-    if (batVoltage >= 0.0f) {
-        float delta  = newV - batVoltage;
-        batCharging  = (delta > BATTERY_CHARGING_THRESHOLD);
-    }
+    batCharging = _detectCharging(newV, _prevVbat);
+    _prevVbat   = newV;
+    batVoltage  = newV;
+    batPercent  = _voltageToPercent(batVoltage);
 
-    batVoltage = newV;
-    batPercent = _voltageToPercent(batVoltage);
-    _historyPush(batPercent);
+    _historyPush(batPercent);   // Alimenta il grafico web
     _updateTimeEstimates();
 
+    // Gestione soglie critiche
     if (batVoltage <= BATTERY_VOLTAGE_CRITICAL) {
-        if (batCharging) {
-            batLowWarning = true;
-            Serial.println("BAT [CRITICA] ma in carica — attendo che salga.");
-        } else {
-            Serial.println("BAT [CRITICA] — richiesta deep sleep immediato.");
-            batLowWarning = true;
+        batLowWarning = true;
+        if (!batCharging) {
+            Serial.println("BAT [CRITICA] — richiesta deep sleep.");
             batShouldSleep = true;
+        } else {
+            Serial.println("BAT [CRITICA] ma in carica — attendo risalita.");
         }
         return;
     }
@@ -208,24 +233,15 @@ inline void batteryUpdate() {
             batShouldSleep = true;
         }
     } else {
-        if (_batWarnStart != 0) {
-            Serial.println("BAT: tensione risalita — preavviso annullato.");
-        }
-        _batWarnStart  = 0;
-        batLowWarning  = false;
+        if (_batWarnStart != 0) Serial.println("BAT: tensione risalita — preavviso annullato.");
+        _batWarnStart = 0;
+        batLowWarning = false;
     }
 
     Serial.print("BAT: ");
     Serial.print(batVoltage, 2);
-    Serial.print(" V ");
+    Serial.print(" V  ");
     Serial.print((int)batPercent);
-    Serial.print("% ");
+    Serial.print("%  ");
     Serial.println(batCharging ? "[CARICA]" : "[SCARICA]");
-}
-
-inline int getBatteryHistorySorted(float* out) {
-    for (int i = 0; i < batHistorySize; i++) {
-        out[i] = _historyAt(i);
-    }
-    return batHistorySize;
 }

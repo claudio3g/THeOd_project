@@ -140,29 +140,40 @@
 #define WIFI_TX_POWER_RAW  44             // WIFI_POWER_11dBm (potenza ridotta)
 
 // ---------------------------------------------------------------------------
-// BATTERIA — ADC2 su GPIO13 (mappatura nativa Heltec WiFi Kit 32 / LoRa 32)
+// BATTERIA — HELTEC WIFI LORA 32 V2.1 CONFERMATA
+//
+// Identificazione eseguita con Heltec_Board_Identifier.ino:
+//   GPIO13 (ADC2): non risponde mai → non collegato su questa board
+//   GPIO37 (ADC1): legge stabile con WiFi OFF e ON → partitore qui collegato
+//
+// Partitore resistivo V2.1: R1=100k (da Vbat), R2=100k (a GND)
+//   → divisore = 2.0  (diverso da V2 che aveva R2=470k → divisore ≈ 4.9)
+//
+// ADC1 (GPIO37) usa analogRead() standard, attenuazione 11dB:
+//   Fondo scala effettivo ≈ 3.9V
+//   Con Vbat=3.7V → Vadc=1.85V → raw≈1942 (nel range, no saturazione)
+//   Con 0dB (Vref=1.1V) l'ADC saturava (Vadc=1.85V > 1.1V) → leggeva sempre 5.39V
+//
+// ADC1 non ha NESSUN conflitto con il driver WiFi → no retry complessi
 // ---------------------------------------------------------------------------
-#define BATTERY_ADC_USE_ADC2
+#define BATTERY_ADC_PIN             37    // GPIO37 — ADC1-CH1, V2.1 onboard
+#define BATTERY_VOLTAGE_MULTIPLIER   2.0f // Partitore R1=R2=100k → Vbat = Vadc × 2
+#define BATTERY_ADC_VREF             3.9f // Vref con attenuazione 11dB (ADC_ATTEN_DB_11)
+#define BATTERY_ADC_SAMPLES          16   // Campioni per media (ADC1 stabile, 16 sufficienti)
+#define BATTERY_ADC_SAMPLE_DELAY_MS   2   // ms tra campioni (ADC1 non ha conflitti WiFi)
 
-#ifdef BATTERY_ADC_USE_ADC2
-  #define BATTERY_ADC_PIN        13   // GPIO13 — partitore resistivo onboard
-  #define BATTERY_ADC2_CH_RAW     4   // ADC2 canale 4
-#else
-  #define BATTERY_ADC_PIN        37   // fallback ADC1 (solo per board V2.1+)
-#endif
-
-// Calcolo tensione dalla lettura ADC
-// Vbat reale = (raw / 4095) * Vref * MULTIPLIER
-// Il partitore onboard Heltec divide per ~4.9
-#define BATTERY_VOLTAGE_MULTIPLIER  4.9f
-#define BATTERY_ADC_VREF            1.1f   // Vref con attenuazione 0 dB
-#define BATTERY_ADC_SAMPLES         16     // Campioni per media ADC
-#define BATTERY_ADC_RETRY_MAX       60     // Retry max per ADC2 (condiviso WiFi)
+// Raw valido per Li-Ion 1S (3.0V–4.2V) con 11dB e divisore 2.0:
+//   raw_min = (3.0V / 2.0 / 3.9V) * 4095 ≈ 1575
+//   raw_max = (4.2V / 2.0 / 3.9V) * 4095 ≈ 2205
+// Soglia conservativa a 1400 per non scartare batterie molto scariche
+#define BATTERY_ADC_MIN_VALID_RAW   1400  // Sotto = lettura spuria (non dovrebbe succedere su ADC1)
 
 // ---------------------------------------------------------------------------
 // SOGLIE TENSIONE BATTERIA Li-Ion 1S
 // ---------------------------------------------------------------------------
 #define BATTERY_VOLTAGE_FULL      4.10f   // V → 100% (carica completa)
+#define BATTERY_VOLTAGE_CHARGING  4.05f   // V → sopra questa soglia = USB connessa e TP4056 in carica
+                                           //     (il TP4056/MCP73831 porta la cella a 4.2V costante)
 #define BATTERY_VOLTAGE_LOW       3.50f   // V → avvio preavviso scarica
 #define BATTERY_VOLTAGE_CRITICAL  3.20f   // V → deep sleep immediato
 #define BATTERY_VOLTAGE_EMPTY     3.00f   // V → riferimento 0% scala
