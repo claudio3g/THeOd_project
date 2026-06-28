@@ -4,21 +4,21 @@
  * ============================================================================
  * web_page.h — Dashboard HTML servita da GET /
  *
- * MODIFICHE v3:
- *   - Titolo aggiornato a "THeOd LoRa Hub"
- *   - Sezione "LoRa / Meshtastic" aggiunta tra Batteria e Sistema:
- *       Card RSSI con indicatore visivo a barre (3 barre CSS-only)
- *       Card SNR e qualità segnale
- *       Badge "Meshtastic ready" (stub, attivato quando loraReady=true)
- *   - Touch e Hall mostrano il valore FILTRATO (touchFilt/hallFilt) in grande
- *     e il valore raw in piccolo per debug
- *   - CSS: aggiunto stile .lora-bars per indicatore visivo RSSI
+ * v4 — Restyling layout: widget LED+Pulsante unificato
  *
- * ARCHITETTURA DATI (invariata):
- *   GET /data    (ogni 2 s)  → JSON con loraRssi, loraSnr, loraLabel aggiunti
+ * CAMBIAMENTI v4 rispetto a v3:
+ *   - Griglia sensori: 3 card separate → 2 card sensori + 1 widget unificato
+ *   - Widget in alto a destra: LED animato + stato pulsante + override 3 tasti
+ *   - Sezione Sistema: rimossa riga LED (ora in alto), rimane solo OLED + WiFi
+ *   - Titolo aggiornato a v4
+ *   - Nessuna modifica al firmware (.ino, .h) — solo web_page.h
+ *
+ * ARCHITETTURA DATI (invariata dalla v3):
+ *   GET /data    (ogni 2 s)  → JSON completo sensori + batteria + LoRa + ledOverride
  *   GET /battery (ogni 30 s) → JSON storico %
- *   GET /lora    (ogni 5 s)  → JSON LoRa completo (nuovo v3)
+ *   GET /lora    (ogni 5 s)  → JSON LoRa completo
  *   GET /oled    (on click)  → toggle OLED
+ *   GET /led     (on click)  → override LED (auto|off|on)
  * ============================================================================
  */
 
@@ -35,7 +35,7 @@ const char PAGE_HTML[] = R"rawliteral(
   --border:rgba(44,58,71,.09); --accent:#4f8a8b; --a-soft:rgba(79,138,139,.13);
   --warn:#c6873a; --danger:#c0392b; --ok:#27ae60; --off:#c0c8d0;
   --radius:13px; --sh:0 2px 10px rgba(44,58,71,.08);
-  --lora:#6b48c8;  /* viola LoRa */
+  --lora:#6b48c8;
 }
 @media(prefers-color-scheme:dark){
   :root{
@@ -56,8 +56,8 @@ header p{color:var(--muted);font-size:.75rem;margin-top:2px}
   letter-spacing:.06em;color:var(--muted);margin:16px 0 7px}
 .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--sh);padding:14px 12px}
 
-/* Griglia sensori 3 colonne */
-.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+/* Griglia sensori: Touch | Hall | [LED+Button widget] */
+.g3{display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:8px}
 .sensor-lbl{font-size:.62rem;font-weight:700;text-transform:uppercase;
   letter-spacing:.05em;color:var(--muted);margin-bottom:3px}
 .sensor-val{font-size:1.55rem;font-weight:700;line-height:1;transition:color .25s}
@@ -65,6 +65,37 @@ header p{color:var(--muted);font-size:.75rem;margin-top:2px}
 .sensor-raw{font-size:.6rem;color:var(--muted);margin-top:1px}
 .c-ok  {color:var(--accent)}
 .c-warn{color:var(--warn)}
+
+/* Widget unificato LED + Pulsante (colonna destra griglia) */
+.led-card{display:flex;flex-direction:column;justify-content:space-between;gap:6px}
+.led-top{display:flex;align-items:center;gap:8px}
+.led-bulb{width:28px;height:28px;border-radius:50%;background:var(--off);
+  flex:none;transition:background .3s,box-shadow .3s}
+.led-bulb.pat-solid{background:#27ae60;box-shadow:0 0 10px rgba(39,174,96,.55)}
+.led-bulb.pat-fade{background:#27ae60;animation:ledFade 2s linear infinite}
+.led-bulb.pat-pulse{animation:ledPulse 1.4s ease-in-out infinite}
+.led-bulb.pat-dim{background:#2a3a2a}
+.led-bulb.pat-off{background:var(--off);box-shadow:none}
+@keyframes ledFade{
+  0%{background:#27ae60;box-shadow:0 0 8px rgba(39,174,96,.5)}
+  100%{background:#1a2a1a;box-shadow:none}}
+@keyframes ledPulse{
+  0%,100%{background:#1a2a1a;box-shadow:none}
+  50%{background:#27ae60;box-shadow:0 0 10px rgba(39,174,96,.6)}}
+.led-meta{flex:1;min-width:0}
+.led-pat-name{font-size:.75rem;font-weight:600;line-height:1.2}
+.led-btn-row{display:flex;gap:4px}
+.led-btn-row{margin-top:2px}
+.led-btn{flex:1;padding:4px 0;border:1.5px solid var(--border);border-radius:7px;
+  background:transparent;color:var(--muted);font-size:.6rem;font-weight:700;
+  cursor:pointer;transition:all .2s;text-transform:uppercase;letter-spacing:.03em}
+.led-btn.active{border-color:var(--accent);background:var(--a-soft);color:var(--accent)}
+/* Stato pulsante fisico */
+.btn-state{display:flex;align-items:center;gap:5px;margin-top:4px;
+  font-size:.68rem;color:var(--muted)}
+.btn-dot{width:7px;height:7px;border-radius:50%;background:var(--off);
+  flex:none;transition:background .2s}
+.btn-dot.pressed{background:var(--accent)}
 
 /* Batteria */
 .bat-row{display:flex;align-items:center;gap:14px}
@@ -86,13 +117,11 @@ header p{color:var(--muted);font-size:.75rem;margin-top:2px}
 .graph-card{padding:12px 12px 10px}
 canvas#g{width:100%;height:130px;display:block}
 
-/* LoRa card */
+/* LoRa */
 .lora-row{display:flex;align-items:center;gap:14px}
 .lora-bars{display:flex;align-items:flex-end;gap:3px;height:28px;flex:none}
 .lora-bar{width:8px;border-radius:2px 2px 0 0;background:var(--off);transition:background .4s}
-.lora-bar.b1{height:9px}
-.lora-bar.b2{height:18px}
-.lora-bar.b3{height:28px}
+.lora-bar.b1{height:9px}.lora-bar.b2{height:18px}.lora-bar.b3{height:28px}
 .lora-bars.good  .lora-bar{background:var(--ok)}
 .lora-bars.fair  .lora-bar.b1,.lora-bars.fair .lora-bar.b2{background:var(--warn)}
 .lora-bars.weak  .lora-bar.b1{background:var(--danger)}
@@ -112,34 +141,13 @@ canvas#g{width:100%;height:130px;display:block}
 .sys-row:last-child{border-bottom:none}
 .sys-lbl{font-size:.88rem;font-weight:500}
 .sys-sub{font-size:.72rem;color:var(--muted);margin-top:1px}
-.sys-right{display:flex;align-items:center;gap:10px;flex:none}
 .tog{width:44px;height:24px;background:var(--off);border-radius:12px;
   position:relative;cursor:pointer;transition:background .2s;flex:none}
 .tog.on{background:var(--accent)}
 .tog-k{position:absolute;width:18px;height:18px;background:#fff;border-radius:50%;
   top:3px;left:3px;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.28)}
 .tog.on .tog-k{transform:translateX(20px)}
-/* LED widget animato */
-.led-row{display:flex;align-items:center;gap:12px}
-.led-bulb{width:26px;height:26px;border-radius:50%;background:var(--off);
-  flex:none;transition:background .3s,box-shadow .3s}
-.led-bulb.pat-solid{background:#27ae60;box-shadow:0 0 10px rgba(39,174,96,.55)}
-.led-bulb.pat-fade{background:#27ae60;animation:ledFade 2s linear infinite}
-.led-bulb.pat-pulse{animation:ledPulse 1.4s ease-in-out infinite}
-.led-bulb.pat-dim{background:#2a3a2a}
-.led-bulb.pat-off{background:var(--off);box-shadow:none}
-@keyframes ledFade{0%{background:#27ae60;box-shadow:0 0 8px rgba(39,174,96,.5)}
-  100%{background:#1a2a1a;box-shadow:none}}
-@keyframes ledPulse{0%,100%{background:#1a2a1a;box-shadow:none}
-  50%{background:#27ae60;box-shadow:0 0 10px rgba(39,174,96,.6)}}
-.led-info{flex:1;min-width:0}
-.led-pat-name{font-size:.88rem;font-weight:500}
-.led-pat-desc{font-size:.72rem;color:var(--muted);margin-top:1px}
-.led-ctrl{display:flex;gap:5px;margin-top:9px}
-.led-btn{flex:1;padding:5px 0;border:1.5px solid var(--border);border-radius:8px;
-  background:transparent;color:var(--muted);font-size:.7rem;font-weight:600;
-  cursor:pointer;transition:all .2s;text-transform:uppercase;letter-spacing:.04em}
-.led-btn.active{border-color:var(--accent);background:var(--a-soft);color:var(--accent)}
+
 footer{text-align:center;margin-top:18px;font-size:.68rem;color:var(--muted);line-height:1.6}
 </style>
 </head>
@@ -148,29 +156,51 @@ footer{text-align:center;margin-top:18px;font-size:.68rem;color:var(--muted);lin
 
 <header>
   <h1>&#128225; THeOd LoRa Hub</h1>
-  <p>Heltec WiFi LoRa 32 V2 &middot; v3</p>
+  <p>Heltec WiFi LoRa 32 V2.1 &middot; v4</p>
 </header>
 
-<!-- SENSORI -->
+<!-- SENSORI + WIDGET LED/PULSANTE -->
 <div class="sec">Sensori</div>
 <div class="g3">
+
+  <!-- Touch -->
   <div class="card">
     <div class="sensor-lbl">Touch</div>
     <div class="sensor-val" id="tVal">--</div>
     <div class="sensor-sub" id="tSub">--</div>
     <div class="sensor-raw" id="tRaw"></div>
   </div>
+
+  <!-- Hall -->
   <div class="card">
     <div class="sensor-lbl">Hall</div>
     <div class="sensor-val" id="hVal">--</div>
     <div class="sensor-sub" id="hSub">--</div>
     <div class="sensor-raw" id="hRaw"></div>
   </div>
-  <div class="card">
-    <div class="sensor-lbl">Pulsante</div>
-    <div class="sensor-val" id="bVal">--</div>
-    <div class="sensor-sub">&nbsp;</div>
+
+  <!-- Widget unificato: LED + Pulsante fisico -->
+  <div class="card led-card">
+    <div class="sensor-lbl">LED &amp; Tasto</div>
+    <div class="led-top">
+      <div class="led-bulb pat-off" id="ledBulb"></div>
+      <div class="led-meta">
+        <div class="led-pat-name" id="ledPatName">--</div>
+      </div>
+    </div>
+    <!-- Stato pulsante fisico BOOT -->
+    <div class="btn-state">
+      <div class="btn-dot" id="btnDot"></div>
+      <span id="btnLabel">Tasto rilasciato</span>
+    </div>
+    <!-- Override LED -->
+    <div class="led-btn-row">
+      <button class="led-btn active" id="ledBtnAuto" onclick="setLed('auto')">Auto</button>
+      <button class="led-btn"        id="ledBtnOff"  onclick="setLed('off')">Off</button>
+      <button class="led-btn"        id="ledBtnOn"   onclick="setLed('on')">On</button>
+    </div>
   </div>
+
 </div>
 
 <!-- BATTERIA -->
@@ -196,7 +226,7 @@ footer{text-align:center;margin-top:18px;font-size:.68rem;color:var(--muted);lin
   <canvas id="g"></canvas>
 </div>
 
-<!-- LORA / MESHTASTIC — NUOVO v3 -->
+<!-- LORA / MESHTASTIC -->
 <div class="sec">LoRa &amp; Meshtastic</div>
 <div class="card">
   <div class="lora-row">
@@ -214,7 +244,7 @@ footer{text-align:center;margin-top:18px;font-size:.68rem;color:var(--muted);lin
   </div>
 </div>
 
-<!-- SISTEMA -->
+<!-- SISTEMA: solo OLED e WiFi -->
 <div class="sec">Sistema</div>
 <div class="card sys-list">
   <div class="sys-row">
@@ -224,20 +254,6 @@ footer{text-align:center;margin-top:18px;font-size:.68rem;color:var(--muted);lin
     </div>
     <div class="tog" id="oTog" onclick="toggleOled()">
       <div class="tog-k"></div>
-    </div>
-  </div>
-  <div class="sys-row" style="flex-direction:column;align-items:stretch;gap:0">
-    <div class="led-row">
-      <div class="led-bulb pat-off" id="ledBulb"></div>
-      <div class="led-info">
-        <div class="led-pat-name" id="ledPatName">--</div>
-        <div class="led-pat-desc" id="ledPatDesc">--</div>
-      </div>
-    </div>
-    <div class="led-ctrl">
-      <button class="led-btn" id="ledBtnAuto" onclick="setLed('auto')">Auto</button>
-      <button class="led-btn" id="ledBtnOff"  onclick="setLed('off')">Spento</button>
-      <button class="led-btn" id="ledBtnOn"   onclick="setLed('on')">Acceso</button>
     </div>
   </div>
   <div class="sys-row">
@@ -277,38 +293,53 @@ function batColor(pct) {
   return pct < 20 ? 'var(--danger)' : pct < 40 ? 'var(--warn)' : 'var(--accent)';
 }
 
-// ── Aggiornamento sensori + batteria + LoRa (ogni 2 s) ──────────────────────
+// ── Aggiornamento dati (ogni 2 s) ────────────────────────────────────────────
 async function refreshData() {
   var d;
   try { d = await fetch('/data').then(function(r){return r.json()}); }
   catch(e) { return; }
 
-  // Touch — mostra valore FILTRATO in grande, raw in piccolo
-  var tv = document.getElementById('tVal');
-  var ts = document.getElementById('tSub');
-  var tr = document.getElementById('tRaw');
+  // Touch
+  var tv=document.getElementById('tVal'), ts=document.getElementById('tSub'), tr=document.getElementById('tRaw');
   tv.textContent = (typeof d.touchFilt === 'number') ? Math.round(d.touchFilt) : d.touch;
   tv.className = 'sensor-val' + (d.touchActive ? ' c-ok' : '');
   ts.textContent = d.touchActive ? 'Attivo' : 'Libero';
   ts.className = 'sensor-sub' + (d.touchActive ? ' c-ok' : '');
   tr.textContent = 'raw: ' + d.touch;
 
-  // Hall — mostra valore FILTRATO in grande, raw in piccolo
-  var hv = document.getElementById('hVal');
-  var hs = document.getElementById('hSub');
-  var hr = document.getElementById('hRaw');
+  // Hall
+  var hv=document.getElementById('hVal'), hs=document.getElementById('hSub'), hr=document.getElementById('hRaw');
   hv.textContent = (typeof d.hallFilt === 'number') ? d.hallFilt.toFixed(1) : d.hall;
   hv.className = 'sensor-val' + (d.magnet ? ' c-warn' : '');
   hs.textContent = d.magnet ? 'Magnete!' : 'Assente';
   hs.className = 'sensor-sub' + (d.magnet ? ' c-warn' : '');
   hr.textContent = 'raw: ' + d.hall;
 
-  // Pulsante
-  var bv = document.getElementById('bVal');
-  bv.textContent = d.button ? '\u25CF' : '\u25CB';
-  bv.className = 'sensor-val' + (d.button ? ' c-ok' : '');
+  // LED widget
+  var patMap = {
+    'off':  { cls:'pat-off',   name:'LED spento' },
+    'dim':  { cls:'pat-dim',   name:'Dim \u2014 bat. bassa' },
+    'fade': { cls:'pat-fade',  name:'Fade \u2014 WiFi' },
+    'full': { cls:'pat-solid', name:'Solid \u2014 carico \u2713' },
+    'puls': { cls:'pat-pulse', name:'Pulse \u2014 in carica' }
+  };
+  var pm = patMap[d.ledPat] || { cls:'pat-off', name:d.ledPat };
+  document.getElementById('ledBulb').className = 'led-bulb ' + pm.cls;
+  document.getElementById('ledPatName').textContent = pm.name;
 
-  // Batteria gauge
+  // Pulsante fisico BOOT
+  var dot = document.getElementById('btnDot');
+  var lbl = document.getElementById('btnLabel');
+  dot.classList.toggle('pressed', d.button);
+  lbl.textContent = d.button ? 'Tasto premuto' : 'Tasto rilasciato';
+
+  // Pulsanti override LED
+  var ov = d.ledOverride;
+  document.getElementById('ledBtnAuto').classList.toggle('active', ov === 0);
+  document.getElementById('ledBtnOff').classList.toggle('active',  ov === 1);
+  document.getElementById('ledBtnOn').classList.toggle('active',   ov === 2);
+
+  // Batteria
   var pct = Math.max(0, Math.min(100, d.batPct));
   var clr = batColor(pct);
   var fill = document.getElementById('bFill');
@@ -319,7 +350,7 @@ async function refreshData() {
   document.getElementById('bVolt').textContent = d.batV >= 0 ? d.batV.toFixed(2)+' V' : 'N/D';
   var st = document.getElementById('bStat');
   if (d.batWarn) {
-    st.textContent = '\u26A0\uFE0F Batteria bassa \u2014 deep sleep imminente';
+    st.textContent = '\u26a0\ufe0f Batteria bassa \u2014 deep sleep imminente';
     st.style.color = 'var(--danger)';
   } else if (d.batChg) {
     st.textContent = '\u2191 In carica';
@@ -336,37 +367,17 @@ async function refreshData() {
   } else if (!d.batChg && d.batEta > 0) {
     et.textContent = 'Autonomia stimata: ' + fmtMin(d.batEta);
   } else {
-    et.textContent = '\u00A0';
+    et.textContent = '\u00a0';
   }
 
-  // LoRa RSSI (aggiornamento leggero da /data, dettaglio da refreshLora)
+  // LoRa (aggiornamento leggero)
   updateLoraUI(d.loraRssi, d.loraSnr, d.loraLabel, d.loraReady);
 
   // OLED toggle
   oledOn = d.oled;
   document.getElementById('oTog').classList.toggle('on', d.oled);
 
-  // LED widget animato
-  var patMap = {
-    'off':  { cls:'pat-off',   name:'LED spento',         desc:'Nessun evento attivo' },
-    'dim':  { cls:'pat-dim',   name:'LED dim',             desc:'\u26a0\ufe0f Batteria bassa' },
-    'fade': { cls:'pat-fade',  name:'LED fade',            desc:'Client Wi-Fi connessi' },
-    'full': { cls:'pat-solid', name:'LED acceso',          desc:'Carica completata \u2713' },
-    'puls': { cls:'pat-pulse', name:'LED pulse',           desc:'In carica\u2026' }
-  };
-  var pm = patMap[d.ledPat] || { cls:'pat-off', name:d.ledPat, desc:'' };
-  var bulb = document.getElementById('ledBulb');
-  bulb.className = 'led-bulb ' + pm.cls;
-  document.getElementById('ledPatName').textContent = pm.name;
-  document.getElementById('ledPatDesc').textContent = pm.desc;
-
-  // Pulsanti override LED (evidenzia quello attivo)
-  var ov = d.ledOverride; // 0=auto, 1=off, 2=on
-  document.getElementById('ledBtnAuto').classList.toggle('active', ov === 0);
-  document.getElementById('ledBtnOff').classList.toggle('active',  ov === 1);
-  document.getElementById('ledBtnOn').classList.toggle('active',   ov === 2);
-
-  // Client
+  // Client WiFi
   var n = d.clients;
   document.getElementById('cliInfo').textContent =
     n === 0 ? 'Nessun client' : n === 1 ? '1 client connesso' : n+' client connessi';
@@ -374,47 +385,31 @@ async function refreshData() {
   document.getElementById('ipFt').textContent = 'AP: '+d.ip;
 }
 
-// ── Aggiornamento UI LoRa (condiviso tra /data e /lora) ─────────────────────
+// ── LoRa UI ──────────────────────────────────────────────────────────────────
 function updateLoraUI(rssi, snr, label, ready) {
-  var bars  = document.getElementById('loraBars');
-  var rVal  = document.getElementById('loraRssiVal');
-  var lbl   = document.getElementById('loraLabel');
-  var snrEl = document.getElementById('loraSnrVal');
-  var mesh  = document.getElementById('loraMesh');
-
+  var bars=document.getElementById('loraBars'),
+      rVal=document.getElementById('loraRssiVal'),
+      lbl=document.getElementById('loraLabel'),
+      snrEl=document.getElementById('loraSnrVal'),
+      mesh=document.getElementById('loraMesh');
   if (!ready) {
-    bars.className = 'lora-bars none';
-    rVal.textContent = 'N/D';
-    lbl.textContent  = 'Modulo LoRa non disponibile';
-    snrEl.textContent = '';
-    mesh.textContent  = 'Meshtastic: non attivo';
-    return;
+    bars.className='lora-bars none'; rVal.textContent='N/D';
+    lbl.textContent='Modulo LoRa non disponibile'; snrEl.textContent='';
+    mesh.textContent='Meshtastic: non attivo'; return;
   }
-
   if (!rssi || rssi === 0) {
-    bars.className = 'lora-bars none';
-    rVal.textContent = '---';
-    lbl.textContent  = 'In ascolto...';
-    snrEl.textContent = '';
-    mesh.textContent  = 'Meshtastic: stub attivo';
-    return;
+    bars.className='lora-bars none'; rVal.textContent='---';
+    lbl.textContent='In ascolto...'; snrEl.textContent='';
+    mesh.textContent='Meshtastic: stub attivo'; return;
   }
-
-  rVal.textContent = rssi + ' dBm';
-
-  // Classe qualità per animazione barre CSS
-  var cls = 'none';
-  if      (label === 'Buono')  cls = 'good';
-  else if (label === 'OK')     cls = 'fair';
-  else if (label === 'Debole') cls = 'weak';
-  bars.className = 'lora-bars ' + cls;
-
+  rVal.textContent = rssi+' dBm';
+  var cls = rssi >= -90 ? 'good' : rssi >= -110 ? 'fair' : rssi > -120 ? 'weak' : 'none';
+  bars.className = 'lora-bars '+cls;
   lbl.textContent = label || '---';
-  snrEl.textContent = (snr && snr !== 0) ? 'SNR: ' + snr.toFixed(1) + ' dB' : '';
-  mesh.textContent  = 'Meshtastic: stub attivo';
+  snrEl.textContent = (snr && snr !== 0) ? 'SNR: '+snr.toFixed(1)+' dB' : '';
+  mesh.textContent = 'Meshtastic: stub attivo';
 }
 
-// ── Aggiornamento LoRa dettagliato da /lora (ogni 5 s) ──────────────────────
 async function refreshLora() {
   var d;
   try { d = await fetch('/lora').then(function(r){return r.json()}); }
@@ -422,125 +417,72 @@ async function refreshLora() {
   updateLoraUI(d.rssi, d.snr, d.label, d.ready);
 }
 
-// ── Aggiornamento storico batteria + grafico (ogni 30 s) ────────────────────
+// ── Grafico canvas ────────────────────────────────────────────────────────────
 async function refreshHistory() {
   var d;
   try { d = await fetch('/battery').then(function(r){return r.json()}); }
   catch(e) { return; }
-  histData  = d.history  || [];
-  histInt   = d.interval || 30;
-  histLowPc = (typeof d.lowPct === 'number') ? d.lowPct : histLowPc;
+  histData=d.history||[]; histInt=d.interval||30;
+  histLowPc=(typeof d.lowPct==='number')?d.lowPct:histLowPc;
   drawGraph();
 }
 
-// ── Grafico Canvas HiDPI-aware ───────────────────────────────────────────────
 function drawGraph() {
-  var canvas = document.getElementById('g');
-  var dpr = window.devicePixelRatio || 1;
-  var rect = canvas.getBoundingClientRect();
-  var needW = Math.round(rect.width  * dpr);
-  var needH = Math.round(rect.height * dpr);
-  if (canvas.width !== needW || canvas.height !== needH) {
-    canvas.width  = needW;
-    canvas.height = needH;
+  var canvas=document.getElementById('g');
+  var dpr=window.devicePixelRatio||1;
+  var rect=canvas.getBoundingClientRect();
+  var nW=Math.round(rect.width*dpr), nH=Math.round(rect.height*dpr);
+  if(canvas.width!==nW||canvas.height!==nH){canvas.width=nW;canvas.height=nH;}
+  var ctx=canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  var W=rect.width, H=rect.height, pad={t:8,r:8,b:22,l:30};
+  var gW=W-pad.l-pad.r, gH=H-pad.t-pad.b, n=histData.length;
+  var dark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  var cTxt=dark?'#8a96a3':'#7c8a98', cGrid=dark?'rgba(255,255,255,.055)':'rgba(0,0,0,.05)';
+  var cLine=dark?'#5a9a9b':'#4f8a8b', cWarn=dark?'rgba(198,135,58,.5)':'rgba(198,135,58,.55)';
+  var cFT=dark?'rgba(79,138,139,.32)':'rgba(79,138,139,.2)', cFB='rgba(79,138,139,0)';
+  ctx.clearRect(0,0,W,H);
+  ctx.font='9px -apple-system,system-ui,sans-serif';
+  if(n<2){
+    ctx.fillStyle=cTxt; ctx.textAlign='center';
+    ctx.fillText('Raccogliendo dati\u2026',W/2,H/2-2);
+    if(n===1)ctx.fillText('(1 campione su 480)',W/2,H/2+10); return;
   }
-  var ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  var W = rect.width, H = rect.height;
-  var pad = {t:8, r:8, b:22, l:30};
-  var gW = W - pad.l - pad.r;
-  var gH = H - pad.t - pad.b;
-  var n = histData.length;
-
-  var dark = window.matchMedia('(prefers-color-scheme:dark)').matches;
-  var cTxt  = dark ? '#576370' : '#7c8a98';
-  var cGrid = dark ? 'rgba(255,255,255,.055)' : 'rgba(0,0,0,.05)';
-  var cLine = dark ? '#5a9a9b' : '#4f8a8b';
-  var cWarn = dark ? 'rgba(198,135,58,.5)'   : 'rgba(198,135,58,.55)';
-  var cFT   = dark ? 'rgba(79,138,139,.32)'  : 'rgba(79,138,139,.2)';
-  var cFB   = 'rgba(79,138,139,0)';
-
-  ctx.clearRect(0, 0, W, H);
-  ctx.font = '9px -apple-system,system-ui,sans-serif';
-
-  if (n < 2) {
-    ctx.fillStyle = cTxt;
-    ctx.textAlign = 'center';
-    ctx.fillText('Raccogliendo dati\u2026', W/2, H/2 - 2);
-    if (n === 1) ctx.fillText('(1 campione su '+Math.min(histData.length+1,480)+')', W/2, H/2+10);
-    return;
-  }
-
-  var ix = function(i){ return pad.l + (i/(n-1)) * gW; };
-  var py = function(p){ return pad.t + (1 - p/100) * gH; };
-
-  ctx.lineWidth = 1;
-  [0, 25, 50, 75, 100].forEach(function(p) {
-    var y = py(p);
-    ctx.beginPath();
-    ctx.strokeStyle = cGrid;
-    ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+gW, y);
-    ctx.stroke();
-    ctx.fillStyle = cTxt;
-    ctx.textAlign = 'right';
-    ctx.fillText(p+'%', pad.l-3, y+3);
+  var ix=function(i){return pad.l+(i/(n-1))*gW;};
+  var py=function(p){return pad.t+(1-p/100)*gH;};
+  ctx.lineWidth=1;
+  [0,25,50,75,100].forEach(function(p){
+    var y=py(p);
+    ctx.beginPath();ctx.strokeStyle=cGrid;ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+gW,y);ctx.stroke();
+    ctx.fillStyle=cTxt;ctx.textAlign='right';ctx.fillText(p+'%',pad.l-3,y+3);
   });
-
-  var ly = py(histLowPc);
+  var ly=py(histLowPc);
+  ctx.beginPath();ctx.strokeStyle=cWarn;ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.moveTo(pad.l,ly);ctx.lineTo(pad.l+gW,ly);ctx.stroke();ctx.setLineDash([]);
+  var grad=ctx.createLinearGradient(0,pad.t,0,pad.t+gH);
+  grad.addColorStop(0,cFT);grad.addColorStop(1,cFB);
   ctx.beginPath();
-  ctx.strokeStyle = cWarn;
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4,3]);
-  ctx.moveTo(pad.l, ly); ctx.lineTo(pad.l+gW, ly);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  var grad = ctx.createLinearGradient(0, pad.t, 0, pad.t+gH);
-  grad.addColorStop(0, cFT);
-  grad.addColorStop(1, cFB);
+  for(var i=0;i<n;i++){var x=ix(i),y=py(histData[i]);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.lineTo(ix(n-1),pad.t+gH);ctx.lineTo(pad.l,pad.t+gH);ctx.closePath();
+  ctx.fillStyle=grad;ctx.fill();
   ctx.beginPath();
-  for (var i=0; i<n; i++) {
-    var x=ix(i), y=py(histData[i]);
-    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  for(var i=0;i<n;i++){var x=ix(i),y=py(histData[i]);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.strokeStyle=cLine;ctx.lineWidth=2;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke();
+  var lx=ix(n-1),lv=histData[n-1],ly2=py(lv);
+  ctx.beginPath();ctx.arc(lx,ly2,3.5,0,Math.PI*2);ctx.fillStyle=cLine;ctx.fill();
+  if(lx>pad.l+30){
+    ctx.fillStyle=cLine;ctx.textAlign=lx>W-35?'right':'center';
+    ctx.fillText(Math.round(lv)+'%',lx+(lx>W-35?-6:0),ly2-6);
   }
-  ctx.lineTo(ix(n-1), pad.t+gH);
-  ctx.lineTo(pad.l,   pad.t+gH);
-  ctx.closePath();
-  ctx.fillStyle = grad;
-  ctx.fill();
-
-  ctx.beginPath();
-  for (var i=0; i<n; i++) {
-    var x=ix(i), y=py(histData[i]);
-    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
-  }
-  ctx.strokeStyle = cLine;
-  ctx.lineWidth = 2;
-  ctx.lineJoin = 'round';
-  ctx.lineCap  = 'round';
-  ctx.stroke();
-
-  var lx=ix(n-1), lv=histData[n-1], ly2=py(lv);
-  ctx.beginPath();
-  ctx.arc(lx, ly2, 3.5, 0, Math.PI*2);
-  ctx.fillStyle = cLine;
-  ctx.fill();
-  if (lx > pad.l + 30) {
-    ctx.fillStyle = cLine;
-    ctx.textAlign = lx > W - 35 ? 'right' : 'center';
-    ctx.fillText(Math.round(lv)+'%', lx + (lx > W-35 ? -6 : 0), ly2 - 6);
-  }
-
-  var tot = (n-1)*histInt;
-  ctx.fillStyle = cTxt;
-  ctx.textAlign = 'center';
+  var tot=(n-1)*histInt;
+  ctx.fillStyle=cTxt;ctx.textAlign='center';
   [[0,'-'+fmtSec(tot)],[1/3,'-'+fmtSec(Math.round(tot*2/3))],
-   [2/3,'-'+fmtSec(Math.round(tot/3))],[1,'Ora']].forEach(function(e) {
-    ctx.fillText(e[1], pad.l + e[0]*gW, H-4);
+   [2/3,'-'+fmtSec(Math.round(tot/3))],[1,'Ora']].forEach(function(e){
+    ctx.fillText(e[1],pad.l+e[0]*gW,H-4);
   });
 }
 
-// ── Toggle OLED ──────────────────────────────────────────────────────────────
+// ── Toggle OLED ───────────────────────────────────────────────────────────────
 async function toggleOled() {
   var next = !oledOn;
   try {
@@ -550,38 +492,32 @@ async function toggleOled() {
   } catch(e) {}
 }
 
-// ── Override LED (auto / spento / acceso) ────────────────────────────────────
+// ── Override LED ──────────────────────────────────────────────────────────────
 async function setLed(state) {
   try {
     await fetch('/led?state='+state);
-    // Aggiornamento immediato dei pulsanti senza aspettare il prossimo polling
-    var ov = state === 'auto' ? 0 : state === 'off' ? 1 : 2;
-    document.getElementById('ledBtnAuto').classList.toggle('active', ov === 0);
-    document.getElementById('ledBtnOff').classList.toggle('active',  ov === 1);
-    document.getElementById('ledBtnOn').classList.toggle('active',   ov === 2);
-    // Aggiorna subito il bulb se override esplicito
-    if (state === 'off') {
-      document.getElementById('ledBulb').className = 'led-bulb pat-off';
-      document.getElementById('ledPatName').textContent = 'LED spento';
-      document.getElementById('ledPatDesc').textContent = 'Override manuale';
-    } else if (state === 'on') {
-      document.getElementById('ledBulb').className = 'led-bulb pat-solid';
-      document.getElementById('ledPatName').textContent = 'LED acceso';
-      document.getElementById('ledPatDesc').textContent = 'Override manuale';
+    var ov = state==='auto' ? 0 : state==='off' ? 1 : 2;
+    document.getElementById('ledBtnAuto').classList.toggle('active', ov===0);
+    document.getElementById('ledBtnOff').classList.toggle('active',  ov===1);
+    document.getElementById('ledBtnOn').classList.toggle('active',   ov===2);
+    if (state==='off') {
+      document.getElementById('ledBulb').className='led-bulb pat-off';
+      document.getElementById('ledPatName').textContent='LED spento (manuale)';
+    } else if (state==='on') {
+      document.getElementById('ledBulb').className='led-bulb pat-solid';
+      document.getElementById('ledPatName').textContent='LED acceso (manuale)';
     }
   } catch(e) {}
 }
 
-// ── Avvio ────────────────────────────────────────────────────────────────────
+// ── Avvio ─────────────────────────────────────────────────────────────────────
 refreshData();
 refreshHistory();
 refreshLora();
 setInterval(refreshData,    2000);
 setInterval(refreshHistory, 30000);
-setInterval(refreshLora,    5000);   // Polling LoRa dettagliato ogni 5 s
-window.addEventListener('resize', function() {
-  if (histData.length > 1) drawGraph();
-});
+setInterval(refreshLora,    5000);
+window.addEventListener('resize', function(){ if(histData.length>1) drawGraph(); });
 </script>
 </body>
 </html>
