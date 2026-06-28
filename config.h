@@ -189,3 +189,31 @@
 
 // Pin Vext: LOW = alimentazione esterna ON (display + partitore)
 #define VEXT_PIN  21
+
+// ---------------------------------------------------------------------------
+// GPS — BeITain BN-220 (u-blox M8030)
+//
+// Connettore: JST-SH 1.0mm 4 pin
+// Cablaggio:
+//   Rosso  (VCC) → VEXT rail (3.3V regolati, sicuro con USB o batteria)
+//   Bianco (RX)  → GPIO23   (UART2 TX: ESP32 invia comandi UBX al GPS)
+//   Verde  (TX)  → GPIO22   (UART2 RX: ESP32 riceve NMEA dal GPS)
+//   Nero   (GND) → GND
+//
+// Nessun pin STANDBY hardware esposto sul BN-220.
+// Standby via comando UBX-CFG-RXM (Power Save Mode) — vedi gps_handler.h
+// Spegnimento completo solo in deep sleep tramite VEXT OFF (già implementato)
+// ---------------------------------------------------------------------------
+#define GPS_RX_PIN       22    // GPIO22 — UART2 RX (riceve NMEA dal BN-220)
+#define GPS_TX_PIN       23    // GPIO23 — UART2 TX (invia comandi UBX)
+#define GPS_BAUD       9600    // Baud rate default u-blox M8030
+#define GPS_UART_NUM      2    // HardwareSerial UART2
+
+// Timeout e intervalli
+#define GPS_FIX_TIMEOUT_MS    120000UL  // 2 min: se nessun fix → segnala no-fix
+#define GPS_UPDATE_MS           1000UL  // Leggi UART GPS ogni 1 s nel loop
+#define GPS_SENTENCE_MAX         100    // Lunghezza max stringa NMEA da parsare
+
+// Soglie qualità fix
+#define GPS_MIN_SATELLITES  4    // Minimo satelliti per fix considerato valido
+#define GPS_MAX_HDOP      5.0f   // HDOP massimo accettabile (< 2 = ottimo, < 5 = ok)

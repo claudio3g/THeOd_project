@@ -245,6 +245,29 @@ footer{text-align:center;margin-top:18px;font-size:.68rem;color:var(--muted);lin
 </div>
 
 <!-- SISTEMA: solo OLED e WiFi -->
+<!-- GPS BeITain BN-220 -->
+<div class="sec">GPS</div>
+<div class="card">
+  <div class="lora-row">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:none;width:36px">
+      <div style="font-size:1.4rem" id="gpsIcon">&#128satellite;</div>
+      <div style="font-size:.6rem;font-weight:700;text-transform:uppercase;
+                  letter-spacing:.04em;color:var(--muted)" id="gpsSatLabel">--</div>
+    </div>
+    <div class="lora-info">
+      <div class="lora-rssi" id="gpsCoords">--</div>
+      <div class="lora-label" id="gpsStatus">In attesa fix...</div>
+      <div class="lora-snr" id="gpsDetail"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <span class="lora-mesh" id="gpsTime">--:--:--</span>
+        <div class="tog" id="gpsTog" onclick="toggleGps()" style="flex:none">
+          <div class="tog-k"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="sec">Sistema</div>
 <div class="card sys-list">
   <div class="sys-row">
@@ -263,7 +286,7 @@ footer{text-align:center;margin-top:18px;font-size:.68rem;color:var(--muted);lin
 </div>
 
 <footer id="ft">
-  Sensori: 2&nbsp;s &middot; Grafico: 30&nbsp;s &middot; LoRa: 5&nbsp;s<br>
+  Sensori: 2&nbsp;s &middot; Grafico: 30&nbsp;s &middot; LoRa: 5&nbsp;s &middot; GPS: 3&nbsp;s<br>
   <span id="ipFt"></span>
 </footer>
 
@@ -510,13 +533,73 @@ async function setLed(state) {
   } catch(e) {}
 }
 
+// ── GPS ───────────────────────────────────────────────────────────────────────
+var gpsOn = true;
+
+async function refreshGps() {
+  var d;
+  try { d = await fetch('/gps').then(function(r){return r.json()}); }
+  catch(e) { return; }
+
+  gpsOn = d.enabled;
+  document.getElementById('gpsTog').classList.toggle('on', d.enabled);
+
+  var icon  = document.getElementById('gpsIcon');
+  var coord = document.getElementById('gpsCoords');
+  var stat  = document.getElementById('gpsStatus');
+  var det   = document.getElementById('gpsDetail');
+  var satLb = document.getElementById('gpsSatLabel');
+  var time  = document.getElementById('gpsTime');
+
+  satLb.textContent = d.sats + ' sat';
+
+  if (!d.enabled) {
+    icon.textContent  = '\uD83D\uDEF0\uFE0F';
+    coord.textContent = 'GPS in standby';
+    stat.textContent  = 'Power Save Mode attivo';
+    det.textContent   = '';
+    time.textContent  = '--:--:--';
+    return;
+  }
+
+  if (d.fix) {
+    icon.textContent = '\uD83D\uDEF0\uFE0F';
+    // Coordinate in formato decimale compatto
+    coord.textContent = d.lat.toFixed(5) + '\u00b0 ' + d.lon.toFixed(5) + '\u00b0';
+    stat.textContent  = (d.speed > 0.5 ? d.speed.toFixed(1)+' km/h \u2022 ' : '') +
+                        'Alt: ' + d.alt.toFixed(0) + ' m';
+    det.textContent   = 'HDOP: ' + d.hdop.toFixed(1) +
+                        (d.age >= 0 ? ' \u2022 fix ' + d.age + 's fa' : '');
+    time.textContent  = d.time || '--:--:--';
+  } else {
+    icon.textContent = '\uD83D\uDEF0';
+    coord.textContent = 'Nessun fix';
+    stat.textContent  = d.sats > 0
+      ? 'Agganciati ' + d.sats + ' satelliti — attendo...'
+      : 'Ricerca satelliti...';
+    det.textContent   = '';
+    time.textContent  = d.time || '--:--:--';
+  }
+}
+
+async function toggleGps() {
+  var next = !gpsOn;
+  try {
+    await fetch('/gpstog?state=' + (next ? 'on' : 'off'));
+    gpsOn = next;
+    document.getElementById('gpsTog').classList.toggle('on', next);
+  } catch(e) {}
+}
+
 // ── Avvio ─────────────────────────────────────────────────────────────────────
 refreshData();
 refreshHistory();
 refreshLora();
+refreshGps();
 setInterval(refreshData,    2000);
 setInterval(refreshHistory, 30000);
 setInterval(refreshLora,    5000);
+setInterval(refreshGps,     3000);  // GPS polling ogni 3s
 window.addEventListener('resize', function(){ if(histData.length>1) drawGraph(); });
 </script>
 </body>

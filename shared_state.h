@@ -51,3 +51,16 @@ extern bool  batSkipNextRead;  // true = salta prossima lettura ADC (transiente 
 extern int   ledOverride;      // 0=auto (logica normale), 1=forza spento, 2=forza acceso
 extern int   wifiClients;      // Client connessi all'AP
 extern char  apIpStr[16];      // IP AP in formato "192.168.4.1"
+
+// --- GPS ---
+extern bool  gpsEnabled;       // true = GPS attivo (non in PSM)
+extern bool  gpsFix;           // true = fix valido (>= GPS_MIN_SATELLITES, HDOP ok)
+extern float gpsLat;           // Latitudine decimale (es. 45.123456), 0.0 = N/D
+extern float gpsLon;           // Longitudine decimale (es. 9.123456), 0.0 = N/D
+extern float gpsAlt;           // Altitudine in metri (MSL), 0.0 = N/D
+extern float gpsSpeed;         // Velocità in km/h, 0.0 = N/D
+extern float gpsHdop;          // HDOP (dilution of precision), 99.9 = N/D
+extern int   gpsSats;          // Satelliti usati nel fix, 0 = N/D
+extern char  gpsTime[10];      // Ora UTC "HH:MM:SS\0"
+extern char  gpsDate[11];      // Data "DD/MM/YYYY\0"
+extern unsigned long gpsLastFixMs; // millis() dell'ultimo fix valido, 0 = mai

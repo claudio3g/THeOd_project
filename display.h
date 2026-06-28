@@ -5,6 +5,10 @@
 #include "config.h"
 #include "shared_state.h"
 #include "led_control.h"
+// gps_handler.h incluso dopo per accesso a gpsFix, gpsLat, ecc.
+// Le variabili GPS sono in shared_state.h (extern)
+#include "shared_state.h"
+#include "led_control.h"
 
 /*
  * ============================================================================
@@ -176,33 +180,34 @@ inline void updateDisplay(LedPattern ledPat) {
     display.setCursor(0, 40);
     display.print(apIpStr);
 
-    // --- Riga 6 (y=48): LoRa RSSI + qualità + SNR --- NUOVO v3 ---
+    // --- Riga 6 (y=48): LoRa RSSI + qualità ---
     display.setCursor(0, 48);
     if (!loraReady) {
-        display.print("LoRa: N/D");
+        display.print("LoRa:N/D");
     } else if (loraRssi == 0) {
-        display.print("LoRa: ascolto...");
+        display.print("LoRa:ascolto");
     } else {
         display.print("LoRa:");
-        display.print(loraRssi);         // es. "-95"
+        display.print(loraRssi);
         display.print("dBm ");
-        display.print(loraRssiLabel()); // "Buono"/"OK"/"Debole"
-        if (loraSnr != 0.0f) {
-            display.print(" ");
-            display.print(loraSnr, 1);
-            display.print("dB");
-        }
+        display.print(loraRssiLabel());
     }
 
-    // --- Riga 7 (y=56): LED pattern + OLED, o avviso batteria bassa ---
+    // --- Riga 7 (y=56): GPS stato / avviso batteria bassa ---
     display.setCursor(0, 56);
     if (batLowWarning) {
         display.print("!! BATTERIA BASSA !!");
+    } else if (gpsFix) {
+        // Fix valido: mostra coordinate compatte
+        display.print(gpsLat, 4);
+        display.print(" ");
+        display.print(gpsLon, 4);
     } else {
-        display.print("LED:");
-        display.print(_ledPatternName(ledPat));
-        display.print(" OLED:");
-        display.print(oledEnabled ? "ON" : "OFF");
+        // No fix: mostra stato ricerca
+        display.print("GPS:");
+        display.print(gpsSats);
+        display.print("sat ");
+        display.print(gpsEnabled ? "cerca..." : "PSM");
     }
 
     display.display();

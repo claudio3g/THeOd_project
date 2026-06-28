@@ -5,6 +5,7 @@
 #include "shared_state.h"
 #include "led_control.h"
 #include "lora_handler.h"
+#include "gps_handler.h"
 #include "display.h"
 #include "web_page.h"
 
@@ -212,6 +213,49 @@ static void _handleLed() {
     else { server.send(400, "text/plain", "Valore non valido (usa auto|off|on)"); }
 }
 
+// ---------------------------------------------------------------------------
+// GET /gps — JSON stato GPS completo
+// ---------------------------------------------------------------------------
+static void _handleGps() {
+    char json[256];
+    snprintf(json, sizeof(json),
+        "{"
+        "\"enabled\":%s,"
+        "\"fix\":%s,"
+        "\"lat\":%.6f,"
+        "\"lon\":%.6f,"
+        "\"alt\":%.1f,"
+        "\"speed\":%.1f,"
+        "\"sats\":%d,"
+        "\"hdop\":%.1f,"
+        "\"time\":\"%s\","
+        "\"date\":\"%s\","
+        "\"age\":%d"
+        "}",
+        gpsEnabled    ? "true" : "false",
+        gpsFix        ? "true" : "false",
+        gpsLat, gpsLon, gpsAlt, gpsSpeed,
+        gpsSats, gpsHdop,
+        gpsTime, gpsDate,
+        gpsFixAge()
+    );
+    server.send(200, "application/json", json);
+}
+
+// ---------------------------------------------------------------------------
+// GET /gps?state=on|off — Attiva o mette in standby il GPS (UBX PSM)
+// ---------------------------------------------------------------------------
+static void _handleGpsToggle() {
+    if (!server.hasArg("state")) {
+        server.send(400, "text/plain", "Parametro 'state' mancante");
+        return;
+    }
+    String s = server.arg("state");
+    if      (s == "on")  { gpsSetEnabled(true);  server.send(200, "text/plain", "OK"); }
+    else if (s == "off") { gpsSetEnabled(false); server.send(200, "text/plain", "OK"); }
+    else { server.send(400, "text/plain", "Valore non valido (usa on|off)"); }
+}
+
 static void _handleNotFound() {
     server.send(404, "text/plain", "404 - Non trovata");
 }
@@ -230,7 +274,9 @@ inline void startWebServer() {
     server.on("/battery", _handleBattery);
     server.on("/lora",    _handleLora);
     server.on("/oled",    _handleOled);
-    server.on("/led",     _handleLed);     // Override manuale LED
+    server.on("/led",     _handleLed);
+    server.on("/gps",     _handleGps);        // JSON stato GPS
+    server.on("/gpstog",  _handleGpsToggle);  // on|off GPS PSM
     server.onNotFound(_handleNotFound);
     server.begin();
 

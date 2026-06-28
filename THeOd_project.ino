@@ -61,6 +61,7 @@
 #include "battery.h"
 #include "led_control.h"
 #include "lora_handler.h"
+#include "gps_handler.h"
 #include "display.h"
 #include "web_routes.h"
 
@@ -106,6 +107,19 @@ int   ledOverride     = 0;     // 0=auto, 1=forza spento, 2=forza acceso
 int   wifiClients     = 0;
 char  apIpStr[16]     = "";
 
+// --- GPS (BeITain BN-220) ---
+bool  gpsEnabled      = false;  // Inizializzato da initGps()
+bool  gpsFix          = false;
+float gpsLat          = 0.0f;
+float gpsLon          = 0.0f;
+float gpsAlt          = 0.0f;
+float gpsSpeed        = 0.0f;
+float gpsHdop         = 99.9f;
+int   gpsSats         = 0;
+char  gpsTime[10]     = "";
+char  gpsDate[11]     = "";
+unsigned long gpsLastFixMs = 0;
+
 // ============================================================================
 // VARIABILI PRIVATE — non condivise con altri moduli
 // ============================================================================
@@ -116,6 +130,7 @@ static unsigned long _btnDebounce  = 0;
 static unsigned long _lastBatMs    = 0;
 static unsigned long _lastOledMs   = 0;
 static unsigned long _lastLoraMs   = 0;
+static unsigned long _lastGpsMs    = 0;
 static unsigned long _lastLogMs    = 0;
 
 // Flag: prima lettura sensori effettuata (per inizializzare EMA correttamente)
@@ -299,6 +314,9 @@ void setup() {
         Serial.println("ATTENZIONE: LoRa non disponibile — continuo senza.");
     }
 
+    // --- GPS BeITain BN-220 ---
+    initGps();
+
     // --- Access Point + Web Server ---
     startWebServer();
     WiFi.softAPIP().toString().toCharArray(apIpStr, sizeof(apIpStr));
@@ -310,6 +328,7 @@ void setup() {
     _lastBatMs  = millis();
     _lastOledMs = millis();
     _lastLoraMs = millis();
+    _lastGpsMs  = millis();
     _lastLogMs  = millis();
 
     // --- Schermata di pronto ---
@@ -380,6 +399,12 @@ void loop() {
         loraUpdate();
     }
 
+    // 8. GPS: leggi byte UART ogni GPS_UPDATE_MS (non bloccante)
+    if (millis() - _lastGpsMs >= GPS_UPDATE_MS) {
+        _lastGpsMs = millis();
+        gpsUpdate();
+    }
+
     // 8. Pattern LED (ogni ciclo per fade fluido)
     LedPattern ledPat = getLedPattern();
     ledPatternUpdate(ledPat);
@@ -405,7 +430,13 @@ void loop() {
         Serial.print("%");       Serial.print(batCharging ? "[CAR]" : "[SCA]");
         Serial.print(" LoRa:");  Serial.print(loraRssi);
         Serial.print("dBm(");    Serial.print(loraRssiLabel());
-        Serial.print(") WiFi:"); Serial.print(wifiClients);
+        Serial.print(") GPS:");  Serial.print(gpsFix ? "FIX" : "no-fix");
+        Serial.print(" sat:");   Serial.print(gpsSats);
+        if (gpsFix) {
+            Serial.print(" lat:"); Serial.print(gpsLat, 5);
+            Serial.print(" lon:"); Serial.print(gpsLon, 5);
+        }
+        Serial.print(" WiFi:"); Serial.print(wifiClients);
         Serial.print("cli LED:"); Serial.println((int)ledPat);
     }
 
