@@ -217,3 +217,6 @@
 // Soglie qualità fix
 #define GPS_MIN_SATELLITES  4    // Minimo satelliti per fix considerato valido
 #define GPS_MAX_HDOP      5.0f   // HDOP massimo accettabile (< 2 = ottimo, < 5 = ok)
+
+// Buffer predefinito per Json
+constexpr size_t JSON_DATA_BUFFER_SIZE = 512;

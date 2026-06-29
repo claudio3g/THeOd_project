@@ -64,9 +64,9 @@ static void _handleData() {
     LedPattern lp = getLedPattern();
     int eta       = batCharging ? batTimeToFull : batTimeToEmpty;
 
-    // Buffer 420 byte: spazio sufficiente per tutti i campi v3
-    char json[420];
-    snprintf(json, sizeof(json),
+    // Buffer definito in config.h: in teoria è uno spazio sufficiente per tutti i campi Json
+    char json[JSON_DATA_BUFFER_SIZE];
+    snprintf(json, JSON_DATA_BUFFER_SIZE,
         "{"
         "\"touch\":%d,\"touchFilt\":%.1f,"
         "\"hall\":%d,\"hallFilt\":%.1f,"
