@@ -174,6 +174,13 @@ constexpr size_t JSON_DATA_BUFFER_SIZE = 512;
 // Soglia conservativa a 1400 per non scartare batterie molto scariche
 #define BATTERY_ADC_MIN_VALID_RAW    950  // Sotto = lettura spuria. raw per Vbat=3.0V è ~1035, margine a 950
 
+// Soglia deviazione standard per rilevare partitore floating (batteria assente).
+// Una batteria reale dà letture stabili (~0.03V di rumore tipico tra campioni).
+// Un partitore floating (USB senza batteria) dà letture instabili (~0.29V tipico).
+// 0.10V è una soglia conservativa: ben sopra il rumore normale, ben sotto
+// il rumore tipico da floating — vedi battery.h: _readBatteryVoltage()
+#define BATTERY_ADC_MAX_STDDEV_V     0.10f
+
 // ---------------------------------------------------------------------------
 // SOGLIE TENSIONE BATTERIA Li-Ion 1S
 // ---------------------------------------------------------------------------

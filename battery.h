@@ -39,10 +39,32 @@ static int _dischargingStreak = 0;  // quante letture consecutive con delta < -t
 #define CHARGING_STREAK_NEEDED  2
 
 // ---------------------------------------------------------------------------
-// _readBatteryVoltage() — lettura ADC1 (GPIO37), semplice e affidabile
+// _readBatteryVoltage() — lettura ADC1 (GPIO37), con rilevamento batteria assente
 //
 // ADC1 non ha conflitti con WiFi: nessun retry complesso necessario.
 // Usa analogSetPinAttenuation(ADC_11db) per Vref≈3.9V, evita saturazione.
+//
+// FIX (v5.1): rilevamento "batteria assente" tramite varianza dei campioni.
+//
+// PROBLEMA: con USB collegato e batteria fisicamente scollegata, il nodo
+// del partitore resistivo è floating. A volte il floating produce raw
+// sempre sotto BATTERY_ADC_MIN_VALID_RAW (caso semplice, già gestito:
+// count=0 → ritorna N/D). Ma a volte il floating produce letture
+// INSTABILI che possono superare la soglia minima per puro rumore/pickup
+// capacitivo, generando una media falsamente plausibile — nel peggiore
+// dei casi capace di cadere nel range "batteria critica" e innescare un
+// deep sleep indesiderato su un dispositivo alimentato solo da USB.
+//
+// SOLUZIONE: una batteria reale collegata dà letture STABILI tra i 16
+// campioni di un singolo burst (variazione tipica ±10 raw units = ~0.03V,
+// dovuta solo a rumore elettrico normale). Un partitore floating non ha
+// una vera sorgente di tensione dietro: la variazione tra campioni è
+// tipicamente molto più ampia (~100+ raw units = ~0.29V) per pickup EMI
+// e leakage capacitivo. Calcoliamo la deviazione standard dei campioni
+// validi: se supera BATTERY_ADC_MAX_STDDEV_V, la lettura non è attendibile
+// (batteria probabilmente assente) e ritorniamo N/D invece di un valore
+// medio plausibile ma falso. Questo funziona ad OGNI lettura, non solo
+// al boot, a differenza del vecchio controllo basato solo su ESP_RST_POWERON.
 // ---------------------------------------------------------------------------
 static float _readBatteryVoltage() {
     // Configura ADC1 con attenuazione 11dB (fondo scala ≈ 3.9V)
@@ -50,6 +72,7 @@ static float _readBatteryVoltage() {
     analogSetPinAttenuation(BATTERY_ADC_PIN, ADC_11db);
     delay(5);  // Breve attesa per stabilizzazione pin dopo cambio attenuazione
 
+    int  samples[BATTERY_ADC_SAMPLES];
     long sum   = 0;
     int  count = 0;
 
@@ -58,6 +81,7 @@ static float _readBatteryVoltage() {
 
         // Scarta raw spuri (non dovrebbero esserci su ADC1, ma per sicurezza)
         if (raw >= BATTERY_ADC_MIN_VALID_RAW) {
+            samples[count] = raw;
             sum += raw;
             count++;
         }
@@ -69,8 +93,28 @@ static float _readBatteryVoltage() {
         return (_lastValidVbat > 0.0f) ? _lastValidVbat : -1.0f;
     }
 
+    float meanRaw = (float)sum / (float)count;
+
+    // Calcola deviazione standard dei campioni validi (in unità raw)
+    float varSum = 0.0f;
+    for (int i = 0; i < count; i++) {
+        float diff = (float)samples[i] - meanRaw;
+        varSum += diff * diff;
+    }
+    float stdDevRaw = sqrtf(varSum / (float)count);
+    float stdDevV   = stdDevRaw * (BATTERY_ADC_VREF / 4095.0f) * BATTERY_VOLTAGE_MULTIPLIER;
+
+    if (stdDevV > BATTERY_ADC_MAX_STDDEV_V) {
+        // Varianza troppo alta: lettura non attendibile, probabile partitore
+        // floating (batteria assente). Non propagare un valore medio falso.
+        Serial.print("BAT: varianza eccessiva (");
+        Serial.print(stdDevV, 3);
+        Serial.println("V) — batteria probabilmente assente, scarto lettura.");
+        return -1.0f;
+    }
+
     // Vbat = (raw_medio / 4095) * Vref_11dB * Moltiplicatore_partitore
-    float vadc = ((float)sum / (float)count) * (BATTERY_ADC_VREF / 4095.0f);
+    float vadc = (meanRaw / 4095.0f) * BATTERY_ADC_VREF;
     float vbat = vadc * BATTERY_VOLTAGE_MULTIPLIER;
 
     _lastValidVbat = vbat;
