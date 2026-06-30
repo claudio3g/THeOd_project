@@ -76,6 +76,13 @@ header p{color:var(--muted);font-size:.75rem;margin-top:2px}
 .led-bulb.pat-pulse{animation:ledPulse 1.4s ease-in-out infinite}
 .led-bulb.pat-dim{background:#2a3a2a}
 .led-bulb.pat-off{background:var(--off);box-shadow:none}
+/* Stati termici: stesso widget bulb, colori semantici */
+.led-bulb.therm-normal{background:var(--ok);box-shadow:0 0 6px rgba(39,174,96,.4)}
+.led-bulb.therm-elevated{background:#8bc34a}
+.led-bulb.therm-warning{background:var(--warn);box-shadow:0 0 8px rgba(198,135,58,.5)}
+.led-bulb.therm-critical{background:var(--danger);animation:ledPulse 1s ease-in-out infinite}
+.led-bulb.therm-emergency{background:var(--danger);animation:ledPulse .4s ease-in-out infinite;
+  box-shadow:0 0 14px rgba(192,57,43,.8)}
 @keyframes ledFade{
   0%{background:#27ae60;box-shadow:0 0 8px rgba(39,174,96,.5)}
   100%{background:#1a2a1a;box-shadow:none}}
@@ -264,6 +271,19 @@ footer{text-align:center;margin-top:18px;font-size:.68rem;color:var(--muted);lin
           <div class="tog-k"></div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- THERMAL MANAGER -->
+<div class="sec">Temperatura</div>
+<div class="card">
+  <div class="lora-row">
+    <div class="led-bulb pat-off" id="thermBulb" style="width:26px;height:26px"></div>
+    <div class="lora-info">
+      <div class="lora-rssi" id="thermTemp">--°C</div>
+      <div class="lora-label" id="thermState">--</div>
+      <div class="lora-snr" id="thermDetail"></div>
     </div>
   </div>
 </div>
@@ -591,15 +611,48 @@ async function toggleGps() {
   } catch(e) {}
 }
 
+// ── Thermal Manager ──────────────────────────────────────────────────────────
+async function refreshThermal() {
+  var d;
+  try { d = await fetch('/thermal').then(function(r){return r.json()}); }
+  catch(e) { return; }
+
+  var stateCls = {
+    0: 'therm-normal',   1: 'therm-elevated',
+    2: 'therm-warning',  3: 'therm-critical',
+    4: 'therm-emergency'
+  };
+  var stateLabel = {
+    0: 'Normale',        1: 'Elevata',
+    2: 'Attenzione',     3: 'Critica',
+    4: 'EMERGENZA'
+  };
+
+  var bulb = document.getElementById('thermBulb');
+  bulb.className = 'led-bulb ' + (stateCls[d.stateNum] || 'pat-off');
+
+  document.getElementById('thermTemp').textContent = d.espTemp.toFixed(1) + '\u00b0C';
+  document.getElementById('thermState').textContent = stateLabel[d.stateNum] || d.state;
+
+  var trendIcon = d.trend > 0 ? '\u25b2' : d.trend < 0 ? '\u25bc' : '\u2014';
+  var detail = 'Min: ' + d.espMin.toFixed(1) + '\u00b0C \u2022 Max: ' + d.espMax.toFixed(1) + '\u00b0C \u2022 ' + trendIcon;
+  if (d.loraTemp > -999) {
+    detail += ' \u2022 LoRa: ' + d.loraTemp.toFixed(1) + '\u00b0C';
+  }
+  document.getElementById('thermDetail').textContent = detail;
+}
+
 // ── Avvio ─────────────────────────────────────────────────────────────────────
 refreshData();
 refreshHistory();
 refreshLora();
 refreshGps();
+refreshThermal();
 setInterval(refreshData,    2000);
 setInterval(refreshHistory, 30000);
 setInterval(refreshLora,    5000);
 setInterval(refreshGps,     3000);  // GPS polling ogni 3s
+setInterval(refreshThermal, 5000);  // Thermal polling ogni 5s
 window.addEventListener('resize', function(){ if(histData.length>1) drawGraph(); });
 </script>
 </body>

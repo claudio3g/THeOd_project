@@ -169,12 +169,25 @@ inline void updateDisplay(LedPattern ledPat) {
     display.print("Btn:");
     display.print(buttonPressed ? "PRE" : "RIL");
 
-    // --- Riga 4 (y=32): WiFi client + avviso batteria bassa ---
+    // --- Riga 4 (y=32): WiFi client + temperatura + avviso batteria bassa ---
     display.setCursor(0, 32);
     display.print("WiFi:");
     display.print(wifiClients);
-    display.print("cli");
-    if (batLowWarning) display.print(" [!BAT]");
+    display.print("cli ");
+    // Temperatura: mostrata solo se NORMAL/ELEVATED (spazio permettendo)
+    // Da WARNING in su, l'avviso prende priorità (vedi sotto)
+    if (!batLowWarning && thermalState < 2) {  // < WARNING
+        display.print((int)espTempFiltered);
+        display.print((char)0xF8);  // simbolo grado SSD1306 (0xF8 = °)
+        display.print("C");
+    } else if (batLowWarning) {
+        display.print("[!BAT]");
+    } else {
+        // WARNING o superiore: priorità all'avviso termico
+        display.print("[T:");
+        display.print(thermalStateStr());
+        display.print("]");
+    }
 
     // --- Riga 5 (y=40): IP Access Point ---
     display.setCursor(0, 40);

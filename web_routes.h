@@ -6,6 +6,7 @@
 #include "led_control.h"
 #include "lora_handler.h"
 #include "gps_handler.h"
+#include "thermal_manager.h"
 #include "display.h"
 #include "web_page.h"
 
@@ -256,6 +257,32 @@ static void _handleGpsToggle() {
     else { server.send(400, "text/plain", "Valore non valido (usa on|off)"); }
 }
 
+// ---------------------------------------------------------------------------
+// GET /thermal — JSON stato termico completo
+// ---------------------------------------------------------------------------
+static void _handleThermal() {
+    char json[256];
+    snprintf(json, sizeof(json),
+        "{"
+        "\"state\":\"%s\","
+        "\"stateNum\":%d,"
+        "\"espTemp\":%.1f,"
+        "\"espMin\":%.1f,"
+        "\"espMax\":%.1f,"
+        "\"loraTemp\":%.1f,"
+        "\"trend\":%d"
+        "}",
+        thermalStateStr(),
+        thermalState,
+        espTempFiltered,
+        espTempMin,
+        espTempMax,
+        loraTemp,
+        thermalTrend
+    );
+    server.send(200, "application/json", json);
+}
+
 static void _handleNotFound() {
     server.send(404, "text/plain", "404 - Non trovata");
 }
@@ -277,6 +304,7 @@ inline void startWebServer() {
     server.on("/led",     _handleLed);
     server.on("/gps",     _handleGps);        // JSON stato GPS
     server.on("/gpstog",  _handleGpsToggle);  // on|off GPS PSM
+    server.on("/thermal", _handleThermal);    // JSON stato termico
     server.onNotFound(_handleNotFound);
     server.begin();
 
