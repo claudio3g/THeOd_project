@@ -204,8 +204,8 @@
 // Standby via comando UBX-CFG-RXM (Power Save Mode) — vedi gps_handler.h
 // Spegnimento completo solo in deep sleep tramite VEXT OFF (già implementato)
 // ---------------------------------------------------------------------------
-#define GPS_RX_PIN       22    // GPIO22 — UART2 RX (riceve NMEA dal BN-220)
-#define GPS_TX_PIN       23    // GPIO23 — UART2 TX (invia comandi UBX)
+#define GPS_RX_PIN       23    // GPIO23 — UART2 RX (cavo verde = TX BN-220, invertito rispetto alla prima stesura)
+#define GPS_TX_PIN       22    // GPIO22 — UART2 TX (cavo bianco = RX BN-220)
 #define GPS_BAUD       9600    // Baud rate default u-blox M8030
 #define GPS_UART_NUM      2    // HardwareSerial UART2
 
@@ -218,5 +218,28 @@
 #define GPS_MIN_SATELLITES  4    // Minimo satelliti per fix considerato valido
 #define GPS_MAX_HDOP      5.0f   // HDOP massimo accettabile (< 2 = ottimo, < 5 = ok)
 
-// Buffer predefinito per Json
-constexpr size_t JSON_DATA_BUFFER_SIZE = 512;
+// ---------------------------------------------------------------------------
+// TEMPERATURA — sensori interni (zero hardware aggiuntivo)
+//
+// Due sorgenti disponibili:
+//   ESP32:  temperatureRead() — die temperature, offset +20-30°C vs ambiente
+//   SX1276: registro 0x3C    — die temperature chip LoRa, ±2°C
+//
+// Le temperature sono quelle del silicio, NON dell'ambiente.
+// Valori normali con WiFi attivo: ESP32 50-75°C, SX1276 35-55°C
+// ---------------------------------------------------------------------------
+#define TEMP_READ_INTERVAL_MS   30000UL  // Lettura ogni 30s (stesso intervallo batteria)
+
+// Soglie allarme ESP32 die temperature
+#define TEMP_ESP_WARN_C     80.0f   // °C: avviso — ridurre carico se possibile
+#define TEMP_ESP_CRIT_C    100.0f   // °C: critico — throttling automatico ESP32
+
+// Soglie allarme SX1276 die temperature
+#define TEMP_LORA_WARN_C    75.0f   // °C: avviso
+#define TEMP_LORA_CRIT_C    85.0f   // °C: critico (max spec SX1276 = 85°C)
+
+// Offset correzione ESP32 (calibrabile per unità specifica)
+// Il sensore interno tende a leggere più alto del reale a basso carico.
+// Valore default 0: nessuna correzione applicata.
+// Se si vuole avvicinarsi alla temperatura ambiente: impostare -20 circa.
+#define TEMP_ESP_OFFSET_C    0.0f   // °C: offset di correzione (positivo = aggiungi)

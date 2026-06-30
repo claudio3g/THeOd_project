@@ -132,9 +132,9 @@ static bool _verifyChecksum(const char* sentence) {
 static void _parseGPRMC(const char* s) {
     // Campo 2: stato (A=valid, V=invalid)
     const char* status = _nmeaField(s, 2);
-    if (status[0] != 'A') return;  // Nessun fix valido
+    if (status[0] != 'A') return;
 
-    // Ora UTC — campo 1: hhmmss.ss
+    // Ora UTC — campo 1
     const char* timeStr = _nmeaField(s, 1);
     if (strlen(timeStr) >= 6) {
         snprintf(gpsTime, sizeof(gpsTime), "%c%c:%c%c:%c%c",
@@ -142,19 +142,23 @@ static void _parseGPRMC(const char* s) {
                  timeStr[3], timeStr[4], timeStr[5]);
     }
 
-    // Latitudine — campo 3+4
-    float lat = _nmeaDegMin(_nmeaField(s, 3), _nmeaField(s, 4)[0]);
-    if (lat != 0.0f) gpsLat = lat;
+    // CORREZIONE BUG: _nmeaField() usa buffer statico condiviso.
+    // Copiare ogni campo in variabile locale PRIMA di chiamare il successivo.
+    char latStr[16], latHemi[4], lonStr[16], lonHemi[4];
+    strncpy(latStr,  _nmeaField(s, 3), sizeof(latStr)  - 1); latStr[sizeof(latStr)-1]  = '\0';
+    strncpy(latHemi, _nmeaField(s, 4), sizeof(latHemi) - 1); latHemi[sizeof(latHemi)-1] = '\0';
+    strncpy(lonStr,  _nmeaField(s, 5), sizeof(lonStr)  - 1); lonStr[sizeof(lonStr)-1]  = '\0';
+    strncpy(lonHemi, _nmeaField(s, 6), sizeof(lonHemi) - 1); lonHemi[sizeof(lonHemi)-1] = '\0';
 
-    // Longitudine — campo 5+6
-    float lon = _nmeaDegMin(_nmeaField(s, 5), _nmeaField(s, 6)[0]);
+    float lat = _nmeaDegMin(latStr, latHemi[0]);
+    float lon = _nmeaDegMin(lonStr, lonHemi[0]);
+    if (lat != 0.0f) gpsLat = lat;
     if (lon != 0.0f) gpsLon = lon;
 
     // Velocità — campo 7: nodi → km/h
-    float spd = _parseFloat(_nmeaField(s, 7));
-    gpsSpeed = spd * 1.852f;
+    gpsSpeed = _parseFloat(_nmeaField(s, 7)) * 1.852f;
 
-    // Data — campo 9: ddmmyy
+    // Data — campo 9
     const char* dateStr = _nmeaField(s, 9);
     if (strlen(dateStr) >= 6) {
         snprintf(gpsDate, sizeof(gpsDate), "%c%c/%c%c/20%c%c",
@@ -170,17 +174,18 @@ static void _parseGPRMC(const char* s) {
 static void _parseGPGGA(const char* s) {
     // Campo 6: qualità fix (0=no fix, 1=GPS, 2=DGPS)
     int quality = atoi(_nmeaField(s, 6));
-    if (quality == 0) {
-        gpsFix = false;
-        return;
-    }
+    if (quality == 0) { gpsFix = false; return; }
 
-    // Latitudine — campo 2+3
-    float lat = _nmeaDegMin(_nmeaField(s, 2), _nmeaField(s, 3)[0]);
+    // CORREZIONE BUG: copiare ogni campo prima di chiamare il successivo
+    char latStr[16], latHemi[4], lonStr[16], lonHemi[4];
+    strncpy(latStr,  _nmeaField(s, 2), sizeof(latStr)  - 1); latStr[sizeof(latStr)-1]  = '\0';
+    strncpy(latHemi, _nmeaField(s, 3), sizeof(latHemi) - 1); latHemi[sizeof(latHemi)-1] = '\0';
+    strncpy(lonStr,  _nmeaField(s, 4), sizeof(lonStr)  - 1); lonStr[sizeof(lonStr)-1]  = '\0';
+    strncpy(lonHemi, _nmeaField(s, 5), sizeof(lonHemi) - 1); lonHemi[sizeof(lonHemi)-1] = '\0';
+
+    float lat = _nmeaDegMin(latStr, latHemi[0]);
+    float lon = _nmeaDegMin(lonStr, lonHemi[0]);
     if (lat != 0.0f) gpsLat = lat;
-
-    // Longitudine — campo 4+5
-    float lon = _nmeaDegMin(_nmeaField(s, 4), _nmeaField(s, 5)[0]);
     if (lon != 0.0f) gpsLon = lon;
 
     // Satelliti — campo 7
@@ -193,7 +198,6 @@ static void _parseGPGGA(const char* s) {
     // Altitudine — campo 9 (in metri MSL)
     gpsAlt = _parseFloat(_nmeaField(s, 9));
 
-    // Fix valido se abbastanza satelliti e HDOP accettabile
     gpsFix = (gpsSats >= GPS_MIN_SATELLITES && gpsHdop <= GPS_MAX_HDOP);
     if (gpsFix) gpsLastFixMs = millis();
 }
