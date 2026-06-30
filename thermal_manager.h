@@ -68,8 +68,21 @@ static bool  _tempFirstRead = true;
 // ---------------------------------------------------------------------------
 // _readLoraTemp() — legge temperatura SX1276 in modo sicuro
 //
-// Richiede modalità STANDBY (~2ms). Salta la lettura se c'è un pacchetto
-// LoRa in arrivo (IRQ RX_DONE attivo) per non interrompere la ricezione.
+// BUG RISOLTO (v5.1): il sensore di temperatura SX1276 NON si aggiorna
+// automaticamente in Standby. Il datasheet (Rev.7 §5.5.7) specifica che
+// va "triggerato" con una transizione esplicita SLEEP → STANDBY:
+//   "The temperature sensor must be triggered... by setting the device
+//    in Sleep mode then to Standby mode."
+// La versione precedente faceva RX_CONT → STANDBY direttamente, senza
+// passare per SLEEP: il registro RegTemp restava fissato al valore letto
+// durante initLora() (SLEEP→STANDBY al boot, chip ancora freddo) → 15°C
+// costante per tutta la sessione, mai più aggiornato.
+//
+// Sequenza corretta: RX_CONT → SLEEP → STANDBY (trigger) → leggi → RX_CONT
+// Costo aggiuntivo: solo qualche µs in più per il passaggio SLEEP, trascurabile.
+//
+// Salta la lettura se c'è un pacchetto in arrivo (IRQ RX_DONE attivo)
+// per non interrompere la ricezione.
 // Formula datasheet SX1276 Rev.7 §5.5.7: T(°C) = 15 - (int8_t)RegTemp
 // ---------------------------------------------------------------------------
 static float _readLoraTemp() {
@@ -78,9 +91,14 @@ static float _readLoraTemp() {
     // Non interrompere se c'è un pacchetto in arrivo
     if (_loraReadReg(SX1276_REG_IRQ_FLAGS) & SX1276_IRQ_RX_DONE) return -999.0f;
 
+    // Trigger del sensore: SLEEP poi STANDBY (richiesto dal datasheet)
+    _loraWriteReg(SX1276_REG_OP_MODE, SX1276_MODE_SLEEP);
+    delayMicroseconds(200);  // Breve pausa per la transizione di modalità
     _loraWriteReg(SX1276_REG_OP_MODE, SX1276_MODE_STDBY);
-    delay(2);
+    delay(2);  // Tempo di conversione del sensore (~1-2ms da datasheet)
+
     float temp = 15.0f - (float)(int8_t)_loraReadReg(0x3C);
+
     _loraWriteReg(SX1276_REG_OP_MODE, SX1276_MODE_RX_CONT);
 
     return (temp >= -40.0f && temp <= 125.0f) ? temp : -999.0f;
