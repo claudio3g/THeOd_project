@@ -139,6 +139,11 @@
 #define AP_PASSWORD   "12345678"
 #define WIFI_TX_POWER_RAW  44             // WIFI_POWER_11dBm (potenza ridotta)
 
+// Buffer JSON endpoint /data — dimensione unica dichiarata qui,
+// usata sia per l'allocazione in web_routes.h sia per snprintf().
+// Aumentare se si aggiungono campi al JSON di /data.
+constexpr size_t JSON_DATA_BUFFER_SIZE = 512;
+
 // ---------------------------------------------------------------------------
 // BATTERIA — HELTEC WIFI LORA 32 V2.1 CONFERMATA
 //
