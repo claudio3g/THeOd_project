@@ -224,27 +224,50 @@ constexpr size_t JSON_DATA_BUFFER_SIZE = 512;
 #define GPS_MAX_HDOP      5.0f   // HDOP massimo accettabile (< 2 = ottimo, < 5 = ok)
 
 // ---------------------------------------------------------------------------
-// TEMPERATURA — sensori interni (zero hardware aggiuntivo)
+// THERMAL MANAGER — gestione termica sistema
 //
-// Due sorgenti disponibili:
-//   ESP32:  temperatureRead() — die temperature, offset +20-30°C vs ambiente
+// Sorgenti temperatura (zero hardware aggiuntivo):
+//   ESP32:  temperatureRead() — die temperature, offset tipico +20-30°C vs ambiente
 //   SX1276: registro 0x3C    — die temperature chip LoRa, ±2°C
 //
-// Le temperature sono quelle del silicio, NON dell'ambiente.
-// Valori normali con WiFi attivo: ESP32 50-75°C, SX1276 35-55°C
+// NOTA: tutte le temperature misurano il SILICIO (die), non l'aria.
+// Valori normali con WiFi + LoRa attivi: ESP32 50-65°C, SX1276 35-50°C.
+//
+// STATI TERMICI (5 livelli con isteresi bidirezionale):
+//   NORMAL    < TEMP_ELEVATED_C         — funzionamento normale
+//   ELEVATED  TEMP_ELEVATED_C .. WARN   — monitoraggio, nessuna azione
+//   WARNING   TEMP_WARNING_C  .. CRIT   — riduzione refresh display
+//   CRITICAL  TEMP_CRITICAL_C .. EMERG  — spegnimento OLED, riduzione log
+//   EMERGENCY > TEMP_EMERGENCY_C        — protezione massima
+//
+// Isteresi: si entra a T_soglia, si esce solo a T_soglia - TEMP_HYSTERESIS_C
+// Questo evita oscillazioni di stato con temperature vicine alla soglia.
 // ---------------------------------------------------------------------------
-#define TEMP_READ_INTERVAL_MS   30000UL  // Lettura ogni 30s (stesso intervallo batteria)
+#define TEMP_READ_INTERVAL_MS   30000UL  // Lettura ogni 30s
 
-// Soglie allarme ESP32 die temperature
-#define TEMP_ESP_WARN_C     80.0f   // °C: avviso — ridurre carico se possibile
-#define TEMP_ESP_CRIT_C    100.0f   // °C: critico — throttling automatico ESP32
+// Soglie di ingresso stato termico (°C, temperatura die ESP32)
+#define TEMP_ELEVATED_C         60.0f
+#define TEMP_WARNING_C          70.0f
+#define TEMP_CRITICAL_C         80.0f
+#define TEMP_EMERGENCY_C        90.0f
 
-// Soglie allarme SX1276 die temperature
-#define TEMP_LORA_WARN_C    75.0f   // °C: avviso
-#define TEMP_LORA_CRIT_C    85.0f   // °C: critico (max spec SX1276 = 85°C)
+// Isteresi uscita stato: si torna allo stato inferiore solo a (soglia - HYST)
+#define TEMP_HYSTERESIS_C        2.0f
+
+// Filtro EMA temperatura ESP32
+// alpha=0.15 → costante di tempo ~6 letture @ 30s = ~3 minuti
+// Più lento di Touch/Hall: la temperatura cambia lentamente
+#define TEMP_EMA_ALPHA          0.15f
 
 // Offset correzione ESP32 (calibrabile per unità specifica)
-// Il sensore interno tende a leggere più alto del reale a basso carico.
-// Valore default 0: nessuna correzione applicata.
-// Se si vuole avvicinarsi alla temperatura ambiente: impostare -20 circa.
-#define TEMP_ESP_OFFSET_C    0.0f   // °C: offset di correzione (positivo = aggiungi)
+// Impostare ~-20.0f per avvicinarsi alla temperatura ambiente reale
+#define TEMP_ESP_OFFSET_C        0.0f
+
+// Statistiche trend: campioni usati per calcolare RISING/STABLE/FALLING
+// trend = media(ultimi N/2 campioni) - media(precedenti N/2 campioni)
+#define TEMP_TREND_SAMPLES       6      // finestra totale (deve essere pari)
+#define TEMP_TREND_THRESHOLD     1.0f   // °C: delta minimo per dichiarare trend
+
+// Soglie SX1276 (più accurate, ±2°C)
+#define TEMP_LORA_WARN_C        75.0f   // °C: avviso LoRa
+#define TEMP_LORA_CRIT_C        83.0f   // °C: critico (max spec = 85°C)

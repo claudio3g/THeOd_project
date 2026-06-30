@@ -61,6 +61,7 @@
 #include "battery.h"
 #include "led_control.h"
 #include "lora_handler.h"
+#include "thermal_manager.h"
 #include "gps_handler.h"
 #include "display.h"
 #include "web_routes.h"
@@ -120,6 +121,15 @@ char  gpsTime[10]     = "";
 char  gpsDate[11]     = "";
 unsigned long gpsLastFixMs = 0;
 
+// --- Thermal Manager ---
+int   thermalState    = 0;       // 0=NORMAL (cast a ThermalState in thermal_manager.h)
+float espTempRaw       = 0.0f;
+float espTempFiltered  = 0.0f;
+float espTempMin       = -1.0f;
+float espTempMax       = -1.0f;
+float loraTemp         = -999.0f;
+int   thermalTrend     = 0;
+
 // ============================================================================
 // VARIABILI PRIVATE — non condivise con altri moduli
 // ============================================================================
@@ -131,6 +141,7 @@ static unsigned long _lastBatMs    = 0;
 static unsigned long _lastOledMs   = 0;
 static unsigned long _lastLoraMs   = 0;
 static unsigned long _lastGpsMs    = 0;
+static unsigned long _lastThermMs  = 0;
 static unsigned long _lastLogMs    = 0;
 
 // Flag: prima lettura sensori effettuata (per inizializzare EMA correttamente)
@@ -314,6 +325,9 @@ void setup() {
         Serial.println("ATTENZIONE: LoRa non disponibile — continuo senza.");
     }
 
+    // --- Thermal Manager (richiede LoRa per lettura temp SX1276) ---
+    initThermal();
+
     // --- GPS BeITain BN-220 ---
     initGps();
 
@@ -329,6 +343,7 @@ void setup() {
     _lastOledMs = millis();
     _lastLoraMs = millis();
     _lastGpsMs  = millis();
+    _lastThermMs = millis();
     _lastLogMs  = millis();
 
     // --- Schermata di pronto ---
@@ -386,6 +401,13 @@ void loop() {
     if (millis() - _lastBatMs >= BATTERY_READ_INTERVAL_MS) {
         _lastBatMs = millis();
         batteryUpdate();
+    }
+
+    // 5b. Aggiornamento temperature ogni 30 s
+    // Timer indipendente (sfasato) per non sovrapporsi a letture batteria
+    if (millis() - _lastThermMs >= TEMP_READ_INTERVAL_MS) {
+        _lastThermMs = millis();
+        thermalUpdate();
     }
 
     // 6. Verifica deep sleep (impostato da batteryUpdate)

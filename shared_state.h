@@ -64,3 +64,15 @@ extern int   gpsSats;          // Satelliti usati nel fix, 0 = N/D
 extern char  gpsTime[10];      // Ora UTC "HH:MM:SS\0"
 extern char  gpsDate[11];      // Data "DD/MM/YYYY\0"
 extern unsigned long gpsLastFixMs; // millis() dell'ultimo fix valido, 0 = mai
+
+// --- Thermal Manager ---
+// ThermalState è definito in thermal_manager.h.
+// Qui usiamo int per evitare dipendenza circolare negli include.
+// Il valore corrisponde all'enum: 0=NORMAL 1=ELEVATED 2=WARNING 3=CRITICAL 4=EMERGENCY
+extern int   thermalState;       // Stato termico corrente (cast a ThermalState)
+extern float espTempRaw;         // °C die ESP32 raw (per debug)
+extern float espTempFiltered;    // °C die ESP32 filtrato EMA
+extern float espTempMin;         // °C minimo sessione (-1 = non ancora disponibile)
+extern float espTempMax;         // °C massimo sessione (-1 = non ancora disponibile)
+extern float loraTemp;           // °C die SX1276 (-999 = N/D)
+extern int   thermalTrend;       // -1=FALLING 0=STABLE +1=RISING
