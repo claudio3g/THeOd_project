@@ -66,60 +66,31 @@ static int   _tempHistSize = 0;
 static bool  _tempFirstRead = true;
 
 // ---------------------------------------------------------------------------
-// _readLoraTemp() — legge temperatura SX1276 in modo sicuro
+// _readLoraTemp() — DISABILITATO (v5.3): sensore hardware non funzionante
 //
-// BUG RISOLTO (v5.1): il sensore di temperatura SX1276 NON si aggiorna
-// automaticamente in Standby. Il datasheet (Rev.7 §5.5.7) specifica che
-// va "triggerato" con una transizione esplicita SLEEP → STANDBY:
-//   "The temperature sensor must be triggered... by setting the device
-//    in Sleep mode then to Standby mode."
-// La versione precedente faceva RX_CONT → STANDBY direttamente, senza
-// passare per SLEEP: il registro RegTemp restava fissato al valore letto
-// durante initLora() (SLEEP→STANDBY al boot, chip ancora freddo) → 15°C
-// costante per tutta la sessione, mai più aggiornato.
+// DIAGNOSI COMPLETA (v5.1 → v5.3):
+//   v5.1: implementata la sequenza di trigger SLEEP→STANDBY richiesta dal
+//         datasheet (Rev.7 §5.5.7). RegTemp restava comunque fisso a 0x00.
+//   v5.2: aumentati i tempi di transizione da 200µs/2ms a 5ms/5ms,
+//         aggiunto log diagnostico del valore raw del registro.
 //
-// Sequenza corretta: RX_CONT → SLEEP → STANDBY (trigger) → leggi → RX_CONT
-// Costo aggiuntivo: solo qualche µs in più per il passaggio SLEEP, trascurabile.
+//   Risultato test sul campo: RegTemp = 0x00 costante in ogni lettura,
+//   indipendentemente dal timing. Nello stesso periodo:
+//     - RSSI variava normalmente (-87 a -125 dBm) → bus SPI funzionante
+//     - GPS, batteria, tutti gli altri moduli SPI/I2C rispondevano correttamente
+//   Questo esclude un problema di comunicazione SPI generale.
 //
-// Salta la lettura se c'è un pacchetto in arrivo (IRQ RX_DONE attivo)
-// per non interrompere la ricezione.
-// Formula datasheet SX1276 Rev.7 §5.5.7: T(°C) = 15 - (int8_t)RegTemp
+// CONCLUSIONE: il sensore di temperatura interno di questo specifico chip
+// SX1276 (o clone) non è funzionante/calibrato in silicio. È un limite
+// hardware noto su alcuni moduli LoRa economici, non risolvibile via firmware.
+//
+// La funzione resta presente (ritorna sempre N/D) per non rompere
+// l'interfaccia pubblica di thermal_manager.h. Se in futuro si monterà
+// un modulo SX1276 con sensore funzionante, basterà ripristinare il corpo
+// precedente (vedi commit "fix(thermal): SX1276 temperature sensor..." in git log).
 // ---------------------------------------------------------------------------
 static float _readLoraTemp() {
-    if (!loraReady) return -999.0f;
-
-    // Non interrompere se c'è un pacchetto in arrivo
-    if (_loraReadReg(SX1276_REG_IRQ_FLAGS) & SX1276_IRQ_RX_DONE) return -999.0f;
-
-    // Trigger del sensore: SLEEP poi STANDBY (richiesto dal datasheet)
-    // v5.2: delay aumentato da 200µs a 5ms — il datasheet non specifica
-    // un tempo esatto per la stabilizzazione dell'oscillatore RC in SLEEP,
-    // 200µs potrebbe essere insufficiente su alcuni esemplari del chip.
-    _loraWriteReg(SX1276_REG_OP_MODE, SX1276_MODE_SLEEP);
-    delay(5);   // Tempo di stabilizzazione SLEEP (era 200µs, ora 5ms)
-    _loraWriteReg(SX1276_REG_OP_MODE, SX1276_MODE_STDBY);
-    delay(5);   // Tempo di conversione del sensore (era 2ms, ora 5ms)
-
-    float temp = 15.0f - (float)(int8_t)_loraReadReg(0x3C);
-
-    // DEBUG TEMPORANEO v5.2 — da rimuovere dopo la diagnosi
-    // Stampa il valore raw del registro per capire se cambia mai
-    static uint8_t _lastRawDebug = 0xFF;
-    uint8_t rawDebug = _loraReadReg(0x3C);
-    if (rawDebug != _lastRawDebug) {
-        Serial.print("LORA_TEMP_DEBUG: RegTemp cambiato 0x");
-        Serial.print(_lastRawDebug, HEX);
-        Serial.print(" -> 0x");
-        Serial.println(rawDebug, HEX);
-        _lastRawDebug = rawDebug;
-    } else {
-        Serial.print("LORA_TEMP_DEBUG: RegTemp fisso a 0x");
-        Serial.println(rawDebug, HEX);
-    }
-
-    _loraWriteReg(SX1276_REG_OP_MODE, SX1276_MODE_RX_CONT);
-
-    return (temp >= -40.0f && temp <= 125.0f) ? temp : -999.0f;
+    return -999.0f;  // Sensore hardware non disponibile su questa unità
 }
 
 // ---------------------------------------------------------------------------
