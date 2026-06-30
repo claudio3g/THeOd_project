@@ -142,7 +142,8 @@ Il sistema non legge mai la temperatura raw nei punti di decisione — interroga
 | CRITICAL | 80°C | 78°C |
 | EMERGENCY | 90°C | 88°C |
 
-- **Sorgenti:** ESP32 die (`temperatureRead()`, EMA α=0.15, τ≈3min) + SX1276 die (registro 0x3C, lettura sicura via switch STANDBY momentaneo, mai durante ricezione attiva)
+- **Sorgente attiva:** ESP32 die (`temperatureRead()`, EMA α=0.15, τ≈3min) — confermata su campo: 47.2-47.4°C, dati stabili e plausibili
+- **Sorgente SX1276:** **disabilitata** — sensore di temperatura interno del chip non funzionante su questa unità (vedi Problemi noti risolti). `loraTemp` resta sempre N/D, gli endpoint e i log omettono il campo correttamente
 - **Trend:** finestra scorrevole 6 campioni (3 minuti), soglia 1°C → RISING/STABLE/FALLING
 - **Statistiche:** min/max sessione
 - **v5 scope:** solo notifica (log seriale, OLED, dashboard web). Le azioni automatiche per stato (riduzione refresh, spegnimento OLED, throttling) sono riservate a v6 — l'architettura è già pronta, bastano i case in `_applyThermalActions()`
@@ -238,7 +239,8 @@ https://github.com/Heltec-Aaron-Lee/WiFi_Kit_series/releases/download/0.0.5/pack
 - **Thermal Manager** — nuovo modulo `thermal_manager.h`
   - Macchina a stati a 5 livelli con isteresi bidirezionale
   - Filtro EMA, trend detection, statistiche min/max
-  - Sorgenti: ESP32 die + SX1276 die (lettura sicura, non interrompe RX attivo)
+  - Sorgente attiva: ESP32 die (confermata su campo, 47°C plausibili)
+  - Sorgente SX1276 implementata, testata e infine **disabilitata**: sensore di temperatura del chip non funzionante in silicio su questa unità (3 commit di indagine: trigger SLEEP→STANDBY, timing aumentato, conferma hardware limit — storico completo in git log)
   - Integrato su OLED (riutilizzo riga 4) e dashboard web (nuova card)
   - v5: solo notifica — azioni automatiche riservate a v6
 - `JSON_DATA_BUFFER_SIZE` centralizzato in `config.h`
@@ -276,6 +278,7 @@ https://github.com/Heltec-Aaron-Lee/WiFi_Kit_series/releases/download/0.0.5/pack
 | Touch/Hall instabili | Nessun filtro, lettura raw diretta | Filtro EMA + isteresi |
 | GPS: nessun satellite agganciato | Cavi TX/RX invertiti nel cablaggio | Scambio GPIO22↔23 in config.h |
 | GPS: altitudine OK ma coordinate sempre 0.0 | Buffer statico `_nmeaField()` sovrascritto tra due chiamate consecutive nella stessa espressione | Copia dei campi in variabili locali separate prima di ogni chiamata successiva |
+| LoRa: temperatura SX1276 fissa a 15.0°C | Indagine in due fasi: (1) sensore richiede trigger esplicito SLEEP→STANDBY per datasheet, implementato ma valore restava fisso; (2) timing aumentato a 5ms, valore ancora fisso a `RegTemp=0x00` mentre RSSI variava normalmente nello stesso periodo → comunicazione SPI funzionante, sensore di temperatura del chip non funzionante in silicio (limite hardware noto su alcuni cloni SX1276 economici) | `_readLoraTemp()` disabilitata, ritorna sempre N/D senza accesso SPI. Thermal Manager si basa solo su ESP32 (funzionante, 47°C plausibili) |
 
 ---
 
