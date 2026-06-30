@@ -92,12 +92,30 @@ static float _readLoraTemp() {
     if (_loraReadReg(SX1276_REG_IRQ_FLAGS) & SX1276_IRQ_RX_DONE) return -999.0f;
 
     // Trigger del sensore: SLEEP poi STANDBY (richiesto dal datasheet)
+    // v5.2: delay aumentato da 200µs a 5ms — il datasheet non specifica
+    // un tempo esatto per la stabilizzazione dell'oscillatore RC in SLEEP,
+    // 200µs potrebbe essere insufficiente su alcuni esemplari del chip.
     _loraWriteReg(SX1276_REG_OP_MODE, SX1276_MODE_SLEEP);
-    delayMicroseconds(200);  // Breve pausa per la transizione di modalità
+    delay(5);   // Tempo di stabilizzazione SLEEP (era 200µs, ora 5ms)
     _loraWriteReg(SX1276_REG_OP_MODE, SX1276_MODE_STDBY);
-    delay(2);  // Tempo di conversione del sensore (~1-2ms da datasheet)
+    delay(5);   // Tempo di conversione del sensore (era 2ms, ora 5ms)
 
     float temp = 15.0f - (float)(int8_t)_loraReadReg(0x3C);
+
+    // DEBUG TEMPORANEO v5.2 — da rimuovere dopo la diagnosi
+    // Stampa il valore raw del registro per capire se cambia mai
+    static uint8_t _lastRawDebug = 0xFF;
+    uint8_t rawDebug = _loraReadReg(0x3C);
+    if (rawDebug != _lastRawDebug) {
+        Serial.print("LORA_TEMP_DEBUG: RegTemp cambiato 0x");
+        Serial.print(_lastRawDebug, HEX);
+        Serial.print(" -> 0x");
+        Serial.println(rawDebug, HEX);
+        _lastRawDebug = rawDebug;
+    } else {
+        Serial.print("LORA_TEMP_DEBUG: RegTemp fisso a 0x");
+        Serial.println(rawDebug, HEX);
+    }
 
     _loraWriteReg(SX1276_REG_OP_MODE, SX1276_MODE_RX_CONT);
 
