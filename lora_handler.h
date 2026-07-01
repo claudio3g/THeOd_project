@@ -162,7 +162,7 @@ inline bool initLora() {
 #define SX1276_IRQ_RX_DONE    0x40  // bit6
 
 inline void loraUpdate() {
-    if (!loraReady) return;
+    if (!loraReady || loraManualDisable) return;
 
     // Leggi RSSI istantaneo del canale (disponibile sempre in RX_CONT)
     // Formula: RSSI = -157 + RegRssiValue  (per HF, >779 MHz)
@@ -217,6 +217,7 @@ inline void loraUpdate() {
 // ---------------------------------------------------------------------------
 inline const char* loraRssiLabel() {
     if (!loraReady) return "N/D";
+    if (loraManualDisable) return "OFF";
     if (loraRssi == 0) return "---";
     if (loraRssi >= LORA_RSSI_GOOD) return "Buono";
     if (loraRssi >= LORA_RSSI_FAIR) return "OK";
@@ -232,4 +233,33 @@ inline void loraSleep() {
     // Usa il bus SPI privato _loraSpi (già inizializzato da initLora)
     _loraWriteReg(SX1276_REG_OP_MODE, SX1276_MODE_SLEEP);
     Serial.println("LoRa: modalita' sleep.");
+}
+
+// ---------------------------------------------------------------------------
+// loraDisable() / loraEnable() — override manuale da dashboard web
+//
+// Distinto deliberatamente da una futura sospensione termica (v6): questo
+// flag rappresenta una scelta esplicita e persistente dell'utente, non
+// un'azione automatica temporanea. loraManualDisable si resetta solo al
+// reboot (default sempre attivo) — mai "dimenticato" disattivato per sempre.
+//
+// loraDisable(): SLEEP reale (consumo ~0.2µA vs ~10mA in RX_CONT), non solo
+// sospensione del polling — coerente con la filosofia "minimo consumo".
+// ---------------------------------------------------------------------------
+inline void loraDisable() {
+    if (!loraReady || loraManualDisable) return;
+    _loraWriteReg(SX1276_REG_OP_MODE, SX1276_MODE_SLEEP);
+    loraManualDisable = true;
+    loraRssi = 0;
+    loraSnr  = 0.0f;
+    Serial.println("LoRa: disattivato manualmente da web.");
+}
+
+inline void loraEnable() {
+    if (!loraReady || !loraManualDisable) return;
+    _loraWriteReg(SX1276_REG_OP_MODE, SX1276_MODE_STDBY);
+    delay(5);
+    _loraWriteReg(SX1276_REG_OP_MODE, SX1276_MODE_RX_CONT);
+    loraManualDisable = false;
+    Serial.println("LoRa: riattivato da web — RX continuo ripreso.");
 }

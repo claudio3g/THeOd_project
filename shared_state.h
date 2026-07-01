@@ -76,3 +76,6 @@ extern float espTempMin;         // °C minimo sessione (-1 = non ancora disponi
 extern float espTempMax;         // °C massimo sessione (-1 = non ancora disponibile)
 extern float loraTemp;           // °C die SX1276 (-999 = N/D)
 extern int   thermalTrend;       // -1=FALLING 0=STABLE +1=RISING
+
+// --- LoRa: override manuale (separato da future sospensioni termiche) ---
+extern bool loraManualDisable;  // true = utente ha disattivato LoRa da web (default false)

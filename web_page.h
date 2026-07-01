@@ -246,7 +246,12 @@ footer{text-align:center;margin-top:18px;font-size:.68rem;color:var(--muted);lin
       <div class="lora-rssi" id="loraRssiVal">--</div>
       <div class="lora-label" id="loraLabel">In attesa segnale...</div>
       <div class="lora-snr"  id="loraSnrVal"></div>
-      <div><span class="lora-mesh" id="loraMesh">Meshtastic: stub</span></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <span class="lora-mesh" id="loraMesh">Meshtastic: stub</span>
+        <div class="tog" id="loraTog" onclick="toggleLora()" style="flex:none">
+          <div class="tog-k"></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -414,7 +419,7 @@ async function refreshData() {
   }
 
   // LoRa (aggiornamento leggero)
-  updateLoraUI(d.loraRssi, d.loraSnr, d.loraLabel, d.loraReady);
+  updateLoraUI(d.loraRssi, d.loraSnr, d.loraLabel, d.loraReady, d.loraDisabled);
 
   // OLED toggle
   oledOn = d.oled;
@@ -429,16 +434,25 @@ async function refreshData() {
 }
 
 // ── LoRa UI ──────────────────────────────────────────────────────────────────
-function updateLoraUI(rssi, snr, label, ready) {
+function updateLoraUI(rssi, snr, label, ready, disabled) {
   var bars=document.getElementById('loraBars'),
       rVal=document.getElementById('loraRssiVal'),
       lbl=document.getElementById('loraLabel'),
       snrEl=document.getElementById('loraSnrVal'),
-      mesh=document.getElementById('loraMesh');
+      mesh=document.getElementById('loraMesh'),
+      tog=document.getElementById('loraTog');
+
+  tog.classList.toggle('on', !disabled);
+
   if (!ready) {
     bars.className='lora-bars none'; rVal.textContent='N/D';
     lbl.textContent='Modulo LoRa non disponibile'; snrEl.textContent='';
     mesh.textContent='Meshtastic: non attivo'; return;
+  }
+  if (disabled) {
+    bars.className='lora-bars none'; rVal.textContent='OFF';
+    lbl.textContent='Disattivato manualmente'; snrEl.textContent='';
+    mesh.textContent='Meshtastic: in pausa'; return;
   }
   if (!rssi || rssi === 0) {
     bars.className='lora-bars none'; rVal.textContent='---';
@@ -457,7 +471,16 @@ async function refreshLora() {
   var d;
   try { d = await fetch('/lora').then(function(r){return r.json()}); }
   catch(e) { return; }
-  updateLoraUI(d.rssi, d.snr, d.label, d.ready);
+  updateLoraUI(d.rssi, d.snr, d.label, d.ready, d.disabled);
+}
+
+async function toggleLora() {
+  var tog = document.getElementById('loraTog');
+  var next = !tog.classList.contains('on');
+  try {
+    await fetch('/loratog?state=' + (next ? 'on' : 'off'));
+    tog.classList.toggle('on', next);
+  } catch(e) {}
 }
 
 // ── Grafico canvas ────────────────────────────────────────────────────────────

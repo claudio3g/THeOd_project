@@ -77,7 +77,7 @@ static void _handleData() {
         "\"batChg\":%s,\"batWarn\":%s,\"batEst\":%s,"
         "\"batEta\":%d,"
         "\"loraRssi\":%d,\"loraSnr\":%.1f,"
-        "\"loraReady\":%s,\"loraLabel\":\"%s\","
+        "\"loraReady\":%s,\"loraLabel\":\"%s\",\"loraDisabled\":%s,"
         "\"oled\":%s,\"clients\":%d,"
         "\"ledPat\":\"%s\",\"ledOverride\":%d,"
         "\"ip\":\"%s\""
@@ -97,6 +97,7 @@ static void _handleData() {
         loraSnr,
         loraReady      ? "true"  : "false",
         loraRssiLabel(),
+        loraManualDisable ? "true" : "false",
         oledEnabled    ? "true"  : "false",
         wifiClients,
         _ledPatStr(lp),
@@ -156,6 +157,7 @@ static void _handleLora() {
     snprintf(json, sizeof(json),
         "{"
         "\"ready\":%s,"
+        "\"disabled\":%s,"
         "\"rssi\":%d,"
         "\"snr\":%.1f,"
         "\"label\":\"%s\","
@@ -168,6 +170,7 @@ static void _handleLora() {
         "\"meshLastRx\":%lu"
         "}",
         loraReady  ? "true" : "false",
+        loraManualDisable ? "true" : "false",
         loraRssi,
         loraSnr,
         loraRssiLabel(),
@@ -283,6 +286,20 @@ static void _handleThermal() {
     server.send(200, "application/json", json);
 }
 
+// ---------------------------------------------------------------------------
+// GET /loratog?state=on|off — Override manuale LoRa (default: sempre attivo)
+// ---------------------------------------------------------------------------
+static void _handleLoraToggle() {
+    if (!server.hasArg("state")) {
+        server.send(400, "text/plain", "Parametro 'state' mancante");
+        return;
+    }
+    String s = server.arg("state");
+    if      (s == "on")  { loraEnable();  server.send(200, "text/plain", "OK"); }
+    else if (s == "off") { loraDisable(); server.send(200, "text/plain", "OK"); }
+    else { server.send(400, "text/plain", "Valore non valido (usa on|off)"); }
+}
+
 static void _handleNotFound() {
     server.send(404, "text/plain", "404 - Non trovata");
 }
@@ -304,6 +321,7 @@ inline void startWebServer() {
     server.on("/led",     _handleLed);
     server.on("/gps",     _handleGps);        // JSON stato GPS
     server.on("/gpstog",  _handleGpsToggle);  // on|off GPS PSM
+    server.on("/loratog", _handleLoraToggle); // on|off LoRa manuale
     server.on("/thermal", _handleThermal);    // JSON stato termico
     server.onNotFound(_handleNotFound);
     server.begin();

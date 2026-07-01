@@ -98,6 +98,7 @@ int   batHistorySize = 0;
 int          loraRssi     = 0;
 float        loraSnr      = 0.0f;
 bool         loraReady    = false;
+bool         loraManualDisable = false;  // Default: LoRa sempre attivo al boot
 int          meshNodeCount = 0;
 unsigned long meshLastRx  = 0;
 

@@ -193,10 +193,12 @@ inline void updateDisplay(LedPattern ledPat) {
     display.setCursor(0, 40);
     display.print(apIpStr);
 
-    // --- Riga 6 (y=48): LoRa RSSI + qualità ---
+    // --- Riga 6 (y=48): LoRa RSSI + qualità (o stato OFF) ---
     display.setCursor(0, 48);
     if (!loraReady) {
         display.print("LoRa:N/D");
+    } else if (loraManualDisable) {
+        display.print("LoRa:OFF");
     } else if (loraRssi == 0) {
         display.print("LoRa:ascolto");
     } else {
