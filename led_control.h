@@ -29,6 +29,8 @@ inline LedPattern getLedPattern() {
     // Override manuale da web: 1=forza spento, 2=forza acceso
     if (ledOverride == 1) return LED_OFF;
     if (ledOverride == 2) return LED_SOLID;
+    // Override automatico da Thermal Manager: 3=allarme termico (pulse veloce)
+    if (ledOverride == 3) return LED_PULSE;
 
     // Logica automatica (ledOverride == 0)
     if (batLowWarning)                         return LED_DIM;

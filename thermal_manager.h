@@ -40,8 +40,8 @@
  *   v6+: azioni hardware (riduzione refresh, spegnimento OLED, LED allarme)
  *
  * INCLUDE ORDER:
- *   thermal_manager.h va incluso DOPO lora_handler.h (usa _loraReadReg/_loraWriteReg)
- *   e PRIMA di display.h (display legge thermalState per adattare refresh).
+ *   thermal_manager.h va incluso DOPO lora_handler.h (usa loraDisable/loraEnable)
+ *   e DOPO display.h (usa setOledEnabled per le azioni CRITICAL/EMERGENCY).
  * ============================================================================
  */
 
@@ -184,28 +184,85 @@ static void _updateTrend(float newTemp) {
 // ---------------------------------------------------------------------------
 // _applyThermalActions() — azioni automatiche per stato termico
 //
-// v5: solo log seriale, nessuna azione hardware.
-//     Le azioni hardware (OLED, LED, refresh) saranno aggiunte in v6
-//     senza modificare questa interfaccia — basta aggiungere casi qui.
+// PRINCIPI:
+//   - Idempotente: chiamata ogni 30s, non fa danni se già nello stato corretto
+//   - Reversibile: quando la temperatura scende sotto la soglia di isteresi,
+//     _updateState() ritorna allo stato inferiore e le azioni vengono annullate
+//   - Non sovrascrive scelte manuali utente: non tocca ledOverride se già impostato
+//     dall'utente (override != 0), non riattiva LoRa se l'utente lo ha disattivato
+//   - Ogni caso gestisce ANCHE il ripristino dall'azione del caso superiore,
+//     così la discesa di stato annulla automaticamente le azioni precedenti
+//
+// AZIONI PER STATO:
+//   NORMAL/ELEVATED : ripristino completo (nel caso si scenda da stati superiori)
+//   WARNING         : refresh OLED rallentato 500ms → 1000ms
+//   CRITICAL        : OLED spento (setOledEnabled false)
+//   EMERGENCY       : OLED spento + LoRa sleep + LED allarme
 // ---------------------------------------------------------------------------
 static void _applyThermalActions(ThermalState state) {
     switch (state) {
+
         case ThermalState::NORMAL:
         case ThermalState::ELEVATED:
-            // Nessuna azione — funzionamento normale
+            // Ripristino completo: annulla eventuali azioni degli stati superiori.
+            // Chiamata ogni 30s — le funzioni controllano lo stato attuale
+            // e sono no-op se già nel valore corretto (idempotenti).
+            oledRefreshMs = OLED_REFRESH_NORMAL_MS;   // 500ms
+            if (!oledEnabled) {
+                setOledEnabled(true);
+                Serial.println("THERMAL: OLED riacceso (temperatura rientrata).");
+            }
+            // Riattiva LoRa solo se era stato sospeso dal Thermal Manager
+            // (non toccare se l'utente lo ha disattivato manualmente)
+            if (loraManualDisable == false && !loraReady) {
+                loraEnable();
+                Serial.println("THERMAL: LoRa riattivato (temperatura rientrata).");
+            }
+            // LED: rimuovi allarme termico solo se non c'è un override manuale utente
+            if (ledOverride == 3) {  // 3 = allarme termico (non toccare 1=off/2=on utente)
+                ledOverride = 0;
+                Serial.println("THERMAL: LED allarme rimosso (temperatura rientrata).");
+            }
             break;
 
         case ThermalState::WARNING:
-            // v6: ridurre refresh OLED, ridurre LED brightness
-            // Per ora: solo segnalazione
+            // Azione leggera: rallenta il refresh OLED per ridurre carico I2C/CPU.
+            // Non spegne il display — l'utente vede ancora le informazioni.
+            oledRefreshMs = OLED_REFRESH_WARNING_MS;  // 1000ms
+            // Ripristina OLED se era stato spento da CRITICAL (temperatura scesa)
+            if (!oledEnabled) {
+                setOledEnabled(true);
+                Serial.println("THERMAL: OLED riacceso (rientrato da CRITICAL a WARNING).");
+            }
             break;
 
         case ThermalState::CRITICAL:
-            // v6: spegnere OLED, ridurre polling LoRa
+            // Spegni il display (0xAE): risparmio ~15mA e riduzione calore OLED.
+            // Il display si riaccenderà automaticamente quando la temperatura
+            // scende sotto CRITICAL - HYSTERESIS (78°C) → stato WARNING → NORMAL.
+            oledRefreshMs = OLED_REFRESH_WARNING_MS;  // Mantieni rallentato
+            if (oledEnabled) {
+                setOledEnabled(false);
+                Serial.println("THERMAL [CRITICAL]: OLED spento automaticamente.");
+            }
             break;
 
         case ThermalState::EMERGENCY:
-            // v6: OLED spento, LED allarme, riduzione massima carichi
+            // Protezione massima: OLED + LoRa spenti + LED allarme.
+            // LoRa in sleep: da ~10mA a ~0.2µA, riduce anche il calore del chip.
+            // LED override 3 = allarme termico (distinto da 1=off/2=on utente).
+            if (oledEnabled) {
+                setOledEnabled(false);
+                Serial.println("THERMAL [EMERGENCY]: OLED spento automaticamente.");
+            }
+            if (!loraManualDisable) {
+                loraDisable();
+                Serial.println("THERMAL [EMERGENCY]: LoRa sospeso automaticamente.");
+            }
+            if (ledOverride == 0) {  // Solo se nessun override utente attivo
+                ledOverride = 3;    // Allarme termico: LED pulse veloce (vedi led_control.h)
+                Serial.println("THERMAL [EMERGENCY]: LED allarme attivato.");
+            }
             break;
     }
 }

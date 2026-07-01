@@ -27,7 +27,8 @@
  *
  * ORDINE INCLUDE (rispetta dipendenze):
  *   config → shared_state → battery → led_control → lora_handler
- *   → thermal_manager → gps_handler → display → web_routes
+ *   → gps_handler → display → thermal_manager → web_routes
+ *   (thermal_manager dopo display: usa setOledEnabled e loraDisable/Enable)
  * ============================================================================
  */
 
@@ -37,9 +38,9 @@
 #include "battery.h"
 #include "led_control.h"
 #include "lora_handler.h"
-#include "thermal_manager.h"
 #include "gps_handler.h"
 #include "display.h"
+#include "thermal_manager.h"   // dopo display.h: usa setOledEnabled(); dopo lora_handler.h: usa loraDisable/Enable()
 #include "web_routes.h"
 
 // ============================================================================
@@ -79,9 +80,10 @@ int          meshNodeCount = 0;
 unsigned long meshLastRx  = 0;
 
 // --- Sistema ---
-bool  oledEnabled     = OLED_DEFAULT_ON;
-bool  batSkipNextRead = false;
-int   ledOverride     = 0;     // 0=auto, 1=forza spento, 2=forza acceso
+bool          oledEnabled     = OLED_DEFAULT_ON;
+bool          batSkipNextRead = false;
+int           ledOverride     = 0;     // 0=auto, 1=forza spento, 2=forza acceso
+unsigned long oledRefreshMs   = OLED_REFRESH_NORMAL_MS;  // Thermal Manager può modificarlo
 int   wifiClients     = 0;
 char  apIpStr[16]     = "";
 
@@ -411,8 +413,8 @@ void loop() {
     LedPattern ledPat = getLedPattern();
     ledPatternUpdate(ledPat);
 
-    // 9. Aggiornamento OLED ogni 500 ms
-    if (millis() - _lastOledMs >= 500) {
+    // 9. Aggiornamento OLED — intervallo dinamico (modificato da Thermal Manager)
+    if (millis() - _lastOledMs >= oledRefreshMs) {
         _lastOledMs = millis();
         updateDisplay(ledPat);
     }

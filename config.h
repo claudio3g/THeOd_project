@@ -284,3 +284,10 @@ constexpr size_t JSON_DATA_BUFFER_SIZE = 512;
 // Soglie SX1276 (più accurate, ±2°C)
 #define TEMP_LORA_WARN_C        75.0f   // °C: avviso LoRa
 #define TEMP_LORA_CRIT_C        83.0f   // °C: critico (max spec = 85°C)
+
+// Intervalli refresh OLED per stato termico
+// In NORMAL/ELEVATED: refresh normale 500ms
+// In WARNING: rallentato a 1000ms (riduce carico CPU/I2C)
+// In CRITICAL/EMERGENCY: OLED spento (setOledEnabled gestisce direttamente)
+#define OLED_REFRESH_NORMAL_MS    500UL
+#define OLED_REFRESH_WARNING_MS  1000UL
