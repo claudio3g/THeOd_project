@@ -20,6 +20,12 @@
  */
 
 // ---------------------------------------------------------------------------
+// VERSIONE FIRMWARE — unico punto di verità, usato da .ino, display e web
+// Aggiornare solo qui — il resto del codice referenzia questa costante.
+// ---------------------------------------------------------------------------
+#define FIRMWARE_VERSION "5.1"
+
+// ---------------------------------------------------------------------------
 // DISPLAY OLED — pin fissi, cablati internamente sul PCB Heltec LoRa 32 V2
 // ---------------------------------------------------------------------------
 #define OLED_SDA_PIN    4

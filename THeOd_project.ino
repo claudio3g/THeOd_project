@@ -1,57 +1,33 @@
 /*
  * ============================================================================
- * THeOd_project_v3.ino — Orchestratore principale del progetto
+ * THeOd_project.ino — Orchestratore principale del progetto
  *
- * HARDWARE TARGET: Heltec WiFi LoRa 32 V2
- *   • ESP32 classico (Xtensa LX6 dual-core)
- *   • OLED 0.96" SSD1306 integrato (cablato sul PCB)
- *   • LED utente su GPIO25 (onboard)
- *   • Tasto BOOT/USER su GPIO0 (onboard)
- *   • Batteria Li-Ion 1S tramite connettore JST onboard
- *   • Modulo LoRa SX1276 integrato (SPI bus dedicato)
+ * Versione firmware: vedere FIRMWARE_VERSION in config.h
  *
- * MODIFICHE v3 rispetto a v2:
- *   1. FILTRO EMA per Touch e Hall
- *      - touchFiltered / hallFiltered: media mobile esponenziale
- *      - touchActive / magnetDetected: logica con isteresi (no più flicker)
- *      - Alpha configurabile in config.h (TOUCH_EMA_ALPHA, HALL_EMA_ALPHA)
+ * HARDWARE: Heltec WiFi LoRa 32 V2.1 (identificata con Heltec_Board_Identifier)
+ *   • ESP32 classico (Xtensa LX6 dual-core, 240 MHz)
+ *   • OLED 0.96" SSD1306 128×64 integrato (cablato sul PCB)
+ *   • LED utente GPIO25, Tasto BOOT GPIO0
+ *   • Batteria Li-Ion 1S via JST — ADC1 GPIO37, partitore calibrato ÷3.042
+ *   • LoRa SX1276 integrato (SPI VSPI dedicato, GPIO5/19/27/18/14/26)
+ *   • GPS BeITain BN-220 (UART2 GPIO22/23, VCC su VEXT rail)
  *
- *   2. LOOP_DELAY ridotto da 100ms a 50ms
- *      - Il filtro EMA necessita di campionamento più frequente per funzionare bene
- *      - La batteria e l'OLED hanno ancora i propri timer interni (invariati)
- *
- *   3. MODULO LORA SX1276 (lora_handler.h)
- *      - Inizializzazione del modulo LoRa onboard senza librerie esterne
- *      - Lettura RSSI (dBm) e SNR (dB) dell'ultimo pacchetto ricevuto
- *      - Polling non bloccante ogni LORA_RSSI_INTERVAL_MS (2 s)
- *      - loraRssi e loraSnr esportati in shared_state per display e web
- *
- *   4. PREDISPOSIZIONE MESHTASTIC
- *      - meshNodeCount e meshLastRx in shared_state.h
- *      - Stub commentato in lora_handler.h (cerca "STUB MESHTASTIC")
- *      - Config: MESHTASTIC_NODE_NAME, LORA_FREQ_HZ, LORA_SF, LORA_BW
- *      - Per attivare: decommentare MESHTASTIC_ENABLED in config.h
- *
- *   5. PIN CHECK: tutti i pin verificati su schematico Heltec LoRa 32 V2
- *      - Touch: GPIO2 ✓ (capacitivo nativo ESP32, lontano da SCL su GPIO15)
- *      - LoRa SPI: GPIO5/19/27/18/14/26 ✓ (bus VSPI dedicato, non condiviso)
- *      - Battery ADC: GPIO13 ADC2-CH4 ✓ (partitore onboard)
- *      - VEXT: GPIO21 ✓ (LOW=ON per display e partitore)
- *
- * STRUTTURA DEL PROGETTO (9 file):
- *   config.h          → costanti: pin, soglie, parametri EMA e LoRa
- *   shared_state.h    → variabili condivise (extern)
- *   battery.h         → lettura ADC batteria, ring buffer, stima ETA
- *   led_control.h     → macchina a stati LED con LEDC PWM
- *   display.h         → OLED: init, layout aggiornato con RSSI LoRa
- *   lora_handler.h    → SX1276: init, RSSI, SNR, stub Meshtastic
- *   web_page.h        → HTML/CSS/JS dashboard (zero risorse esterne)
- *   web_routes.h      → Access Point + endpoint HTTP (JSON aggiornato)
- *   THeOd_project_v3.ino → questo file
+ * STRUTTURA DEL PROGETTO (11 file):
+ *   config.h           → costanti: pin, soglie, FIRMWARE_VERSION
+ *   shared_state.h     → variabili condivise (extern)
+ *   battery.h          → ADC1 batteria, ring buffer, stima ETA, deep sleep
+ *   led_control.h      → macchina a stati LED + override web
+ *   lora_handler.h     → SX1276: init, RSSI, SNR, toggle manuale, stub Meshtastic
+ *   thermal_manager.h  → stato termico 5 livelli, EMA, trend, min/max
+ *   gps_handler.h      → BN-220: UART2, parser NMEA, UBX PSM standby
+ *   display.h          → OLED: init, layout 8 righe
+ *   web_routes.h       → Access Point + endpoint HTTP
+ *   web_page.h         → Dashboard HTML/CSS/JS (zero dipendenze esterne)
+ *   THeOd_project.ino  → questo file
  *
  * ORDINE INCLUDE (rispetta dipendenze):
  *   config → shared_state → battery → led_control → lora_handler
- *   → display → web_routes (include web_page.h)
+ *   → thermal_manager → gps_handler → display → web_routes
  * ============================================================================
  */
 
@@ -293,7 +269,9 @@ void setup() {
     delay(150);
 
     Serial.println("\n========================================");
-    Serial.println("  THeOd Project v3 — Heltec WiFi LoRa 32 V2");
+    Serial.print(  "  THeOd Project v");
+    Serial.print(FIRMWARE_VERSION);
+    Serial.println(" — Heltec WiFi LoRa 32 V2.1");
     Serial.println("  Build: " __DATE__ " " __TIME__);
     Serial.println("========================================");
 
@@ -353,7 +331,8 @@ void setup() {
         display.setTextSize(1);
         display.setTextColor(SSD1306_WHITE);
         display.setCursor(0, 0);
-        display.println("Sistema pronto! v3");
+        display.print("Sistema pronto! v");
+        display.println(FIRMWARE_VERSION);
         display.println("");
         display.print("Touch: GPIO "); display.println(TOUCH_PIN);
         display.println("Tasto: BOOT (GPIO0)");

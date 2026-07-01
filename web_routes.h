@@ -80,7 +80,8 @@ static void _handleData() {
         "\"loraReady\":%s,\"loraLabel\":\"%s\",\"loraDisabled\":%s,"
         "\"oled\":%s,\"clients\":%d,"
         "\"ledPat\":\"%s\",\"ledOverride\":%d,"
-        "\"ip\":\"%s\""
+        "\"ip\":\"%s\","
+        "\"version\":\"%s\""
         "}",
         touchValue,  touchFiltered,
         hallValue,   hallFiltered,
@@ -102,7 +103,8 @@ static void _handleData() {
         wifiClients,
         _ledPatStr(lp),
         ledOverride,
-        apIpStr
+        apIpStr,
+        FIRMWARE_VERSION
     );
     server.send(200, "application/json", json);
 }

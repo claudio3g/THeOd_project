@@ -4,16 +4,9 @@
  * ============================================================================
  * web_page.h — Dashboard HTML servita da GET /
  *
- * v4 — Restyling layout: widget LED+Pulsante unificato
- *
- * CAMBIAMENTI v4 rispetto a v3:
- *   - Griglia sensori: 3 card separate → 2 card sensori + 1 widget unificato
- *   - Widget in alto a destra: LED animato + stato pulsante + override 3 tasti
- *   - Sezione Sistema: rimossa riga LED (ora in alto), rimane solo OLED + WiFi
- *   - Titolo aggiornato a v4
- *   - Nessuna modifica al firmware (.ino, .h) — solo web_page.h
- *
- * ARCHITETTURA DATI (invariata dalla v3):
+ * Versione UI: vedere FIRMWARE_VERSION in config.h
+ * Il numero versione nel subtitle HTML è generato a runtime dal JS
+ * leggendo il campo 'version' dall'endpoint /data.
  *   GET /data    (ogni 2 s)  → JSON completo sensori + batteria + LoRa + ledOverride
  *   GET /battery (ogni 30 s) → JSON storico %
  *   GET /lora    (ogni 5 s)  → JSON LoRa completo
@@ -163,7 +156,7 @@ footer{text-align:center;margin-top:18px;font-size:.68rem;color:var(--muted);lin
 
 <header>
   <h1>&#128225; THeOd LoRa Hub</h1>
-  <p>Heltec WiFi LoRa 32 V2.1 &middot; v4</p>
+  <p>Heltec WiFi LoRa 32 V2.1 &middot; <span id="fwVer">v--</span></p>
 </header>
 
 <!-- SENSORI + WIDGET LED/PULSANTE -->
@@ -431,6 +424,7 @@ async function refreshData() {
     n === 0 ? 'Nessun client' : n === 1 ? '1 client connesso' : n+' client connessi';
 
   document.getElementById('ipFt').textContent = 'AP: '+d.ip;
+  if (d.version) document.getElementById('fwVer').textContent = 'v'+d.version;
 }
 
 // ── LoRa UI ──────────────────────────────────────────────────────────────────

@@ -14,21 +14,15 @@
  * ============================================================================
  * display.h — Gestione OLED SSD1306 128×64 integrato
  *
- * LAYOUT OLED v3 (8 righe × 8px = 64px):
+ * LAYOUT OLED (8 righe × 8px = 64px):
  *   Riga 0 (y=0):  Batteria: tensione, %, stato carica
  *   Riga 1 (y=8):  Stima ETA (Piena/Scarica/Stabile/Stima...)
  *   Riga 2 (y=16): Touch: valore filtrato + stato
  *   Riga 3 (y=24): Hall: valore filtrato + magnete + pulsante
- *   Riga 4 (y=32): WiFi client + avviso batteria bassa
+ *   Riga 4 (y=32): WiFi client + temperatura ESP32 (o stato termico/batteria)
  *   Riga 5 (y=40): IP Access Point
- *   Riga 6 (y=48): LoRa RSSI (dBm) + qualità + SNR  ← NUOVO v3
- *   Riga 7 (y=56): LED pattern + OLED stato
- *
- * MODIFICHE v3:
- *   - Riga 6: sostituisce vecchia riga "LED+OLED" con info LoRa
- *   - Riga 7: LED pattern + OLED (spostati di una riga)
- *   - updateDisplay() ora mostra touchFiltered e hallFiltered (valori stabili)
- *     invece dei valori raw (che cambiano troppo velocemente)
+ *   Riga 6 (y=48): LoRa RSSI + qualità (o "LoRa:OFF" se disattivato)
+ *   Riga 7 (y=56): GPS coordinate (con fix) / satelliti / "!! BATTERIA BASSA !!"
  *   - In caso di batLowWarning: riga 7 mostra "!! BATTERIA BASSA !!"
  *     (invariato rispetto a v2, ma non sovrascrive più LoRa)
  * ============================================================================
@@ -79,8 +73,9 @@ inline void initDisplay() {
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
     display.setCursor(0, 0);
-    display.println("THeOd Project v3");
-    display.println("Heltec LoRa 32 V2");
+    display.print("THeOd Project v");
+    display.println(FIRMWARE_VERSION);
+    display.println("Heltec LoRa 32 V2.1");
     display.println("");
     display.println("Avvio in corso...");
     display.display();
