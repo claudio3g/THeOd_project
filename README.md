@@ -2,8 +2,8 @@
 
 **THeOd** (Temperature, Hall, OLED, display) è un firmware ESP32 per la scheda **Heltec WiFi LoRa 32 V2.1** che integra sensori onboard, gestione avanzata della batteria, GPS, modulo LoRa SX1276, gestione termica e una dashboard web accessibile via Wi-Fi.
 
-> **Stato attuale:** v5.0-stable  
-> **Prossimo sviluppo:** v6 — azioni automatiche Thermal Manager (riduzione carichi per stato)
+> **Stato attuale:** v6.0-stable
+> **Prossimo sviluppo:** Meshtastic integration + Hall sensor threshold calibration
 
 ---
 
@@ -143,10 +143,19 @@ Il sistema non legge mai la temperatura raw nei punti di decisione — interroga
 | EMERGENCY | 90°C | 88°C |
 
 - **Sorgente attiva:** ESP32 die (`temperatureRead()`, EMA α=0.15, τ≈3min) — confermata su campo: 47.2-47.4°C, dati stabili e plausibili
-- **Sorgente SX1276:** **disabilitata** — sensore di temperatura interno del chip non funzionante su questa unità (vedi Problemi noti risolti). `loraTemp` resta sempre N/D, gli endpoint e i log omettono il campo correttamente
+- **Sorgente SX1276:** **disabilitata** — sensore di temperatura interno del chip non funzionante su questa unità (vedi Problemi noti risolti). `loraTemp` resta sempre N/D
 - **Trend:** finestra scorrevole 6 campioni (3 minuti), soglia 1°C → RISING/STABLE/FALLING
 - **Statistiche:** min/max sessione
-- **v5 scope:** solo notifica (log seriale, OLED, dashboard web). Le azioni automatiche per stato (riduzione refresh, spegnimento OLED, throttling) sono riservate a v6 — l'architettura è già pronta, bastano i case in `_applyThermalActions()`
+- **Azioni automatiche (v6):** implementate in `_applyThermalActions()`, reversibili automaticamente al calare della temperatura:
+
+| Stato | Azione |
+|---|---|
+| NORMAL/ELEVATED | Ripristino completo (OLED on, refresh 500ms, LoRa on, LED normale) |
+| WARNING | Refresh OLED rallentato 500ms → 1000ms |
+| CRITICAL | OLED spento via `setOledEnabled(false)` (~15mA risparmiati) |
+| EMERGENCY | OLED spento + LoRa sleep (~0.2µA) + LED allarme (pulse) |
+
+Principi delle azioni: **idempotenti** (chiamate ogni 30s), **reversibili** (NORMAL ripristina tutto), **non distruttive** (non sovrascrivono scelte manuali utente — `loraManualDisable=true` e `ledOverride` 1/2 vengono rispettati).
 
 ### Access Point Wi-Fi + Dashboard web
 
@@ -231,7 +240,24 @@ https://github.com/Heltec-Aaron-Lee/WiFi_Kit_series/releases/download/0.0.5/pack
 
 ## Changelog
 
-### v5.0-stable *(corrente)*
+### v6.0-stable *(corrente)*
+- **Azioni automatiche Thermal Manager** — `_applyThermalActions()` implementata
+  - WARNING: refresh OLED 500ms → 1000ms
+  - CRITICAL: `setOledEnabled(false)` automatico (~15mA risparmio)
+  - EMERGENCY: OLED off + `loraDisable()` (~0.2µA) + LED allarme (pulse)
+  - NORMAL: ripristino completo automatico al calare della temperatura
+  - Idempotente, reversibile, non distruttivo (rispetta override manuali utente)
+- **LoRa toggle manuale** da dashboard web (endpoint `/loratog?state=on|off`)
+  - Chip in vera SLEEP (0.2µA) quando disattivato, non solo polling sospeso
+  - `loraManualDisable` separato da future sospensioni termiche automatiche
+- **Fix batteria senza USB** — rilevamento ADC floating via varianza campioni
+  - Deviazione standard > 0.10V → lettura scartata (batteria assente)
+  - Funziona ad ogni ciclo, non solo al boot
+- **`FIRMWARE_VERSION`** centralizzata in `config.h` — un solo punto da aggiornare
+  - Rimossa da header `.ino`, splash OLED, stringa seriale, subtitle dashboard web
+- Header `THeOd_project.ino` riscritto: nome corretto, board V2.1, struttura aggiornata
+
+### v5.0-stable
 - **GPS BeITain BN-220 confermato funzionante sul campo**
   - Fix bug cablaggio: pin TX/RX invertiti (GPIO22↔23)
   - Fix bug critico parser NMEA: buffer statico `_nmeaField()` sovrascritto tra chiamate consecutive → lat/lon sempre 0.0, solo altitudine funzionava
@@ -296,13 +322,12 @@ https://github.com/Heltec-Aaron-Lee/WiFi_Kit_series/releases/download/0.0.5/pack
 
 ---
 
-## Prossimi sviluppi (v6)
+## Prossimi sviluppi (v7)
 
-- [ ] Azioni automatiche Thermal Manager: riduzione refresh OLED in WARNING, spegnimento OLED in CRITICAL, LED allarme in EMERGENCY
-- [ ] Calibrazione `TEMP_ESP_OFFSET_C` su dati di campo
-- [ ] Fix deep sleep con USB senza batteria (ADC partitore a vuoto)
-- [ ] Integrazione Meshtastic (decommentare `MESHTASTIC_ENABLED`)
-- [ ] Valutare Component Registry se la complessità lo giustifica
+- [ ] Integrazione Meshtastic (decommentare `MESHTASTIC_ENABLED` in config.h, freq/parametri EU868 già configurati)
+- [ ] Calibrazione `TEMP_ESP_OFFSET_C` su dati di campo (valutare offset vs temperatura ambiente reale)
+- [ ] Calibrazione soglia Hall (`HALL_THRESHOLD`) — sensor Hall mostra `[M]` costante, potrebbe necessitare taratura
+- [ ] Valutare Component Registry quando la complessità lo giustifica (candidato con Meshtastic)
 
 ---
 
